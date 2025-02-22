@@ -1,0 +1,155 @@
+﻿@* WaveFormPlayer.razor *@
+
+@using System;
+@using System.IO;
+@using System.Threading.Tasks;
+@using Microsoft.AspNetCore.Components;
+@using FFMpegCore.Pipes;
+@using FFMpegCore;
+
+@using Shield.Estimator.Shared.Components.Methods
+
+@inject IConfiguration conf
+@inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment HostEnvironment
+@inject NavigationManager NavigationManager
+
+<style>
+    #buttonsgroup {
+    font-size: 12px;
+    }
+</style>
+
+@if (IsAudioLoading)
+{
+    <WaveFormPlayerSkeleton />
+}
+<div style="display: @(IsAudioLoading ? "none" : "block" )">
+    <MudText Typo="Typo.body1" style="align-items:center; display: flex; flex-direction: row; min-width: 300px; min-height: 174px; max-width:100%; position: relative;">
+        <MudButtonGroup id="buttonsgroup" Color="@ColorTag" Variant="Variant.Text" Vertical="true" Style="width: 110px; min-height:150px;">
+            <label>
+                <input type="checkbox" id="loopregions" checked="${loop}" /> Зацикливание
+            </label>
+            <MudDivider />
+            <label>
+                Скорость: <span id="currentspeed">1.00</span>x <input type="range" id="speedlevel" min="0" max="6" value="3" style="width: 100px;" />
+            </label>
+            <MudDivider />
+            <label>
+                Увеличение: <input type="range" id="zoomlevel" min="10" max="500" value="0" style="width: 100px;" />
+            </label>
+            <MudDivider />
+            <div style="display: flex; justify-content:space-between;">
+                <button id="backwardbutton">⏮</button>|<button id="forwardbutton">⏭</button>
+            </div>
+            <div id="saveaudio">
+                <MudButton Disabled="@IsAudioLoadErr" Variant="Variant.Outlined" FullWidth StartIcon="@Icons.Material.Filled.Save" Color="Color.Info" Size="Size.Small">.wav</MudButton>
+            </div>
+        </MudButtonGroup>
+
+        <div id="playercontainer" style="width: calc(100% - 110px); padding-left: 8px;">
+            @if (IsAudioLoadErr)
+            {
+                <MudText Color="Color.Error" Style="width:100%; text-align:center;">НЕПОДДЕРЖИВАЕМЫЙ ТИП АУДИОЗАПИСИ (RecordType = "@RecordType")</MudText>
+            }
+        </div>
+
+
+    </MudText>
+</div>
+
+@code {
+    [Parameter]
+    public string FileName { get; set; }
+    [Parameter]
+    public bool AutoPlay { get; set; } = false;
+    [Parameter]
+    public MudBlazor.Color ColorTag { get; set; }
+    [Parameter]
+    public byte[] AudioDataLeft { get; set; }
+    [Parameter]
+    public byte[] AudioDataRight { get; set; }
+    [Parameter]
+    public string RecordType { get; set; }
+
+    private bool IsAudioLoadErr = false;
+    private bool IsAudioLoading = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            string UnicId = Guid.NewGuid().ToString();
+            await LoadAudioData(UnicId);
+            await DeleteAudioFileAsync(UnicId);
+        }
+    }
+
+    private async Task DeleteAudioFileAsync(string UnicId)
+    {
+        await Task.Delay(1200); // Ждём, чтобы пользователь мог воспроизвести аудио
+        var path = Path.Combine(HostEnvironment.WebRootPath, "files", UnicId + ".wav");
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+            if (File.Exists(path))
+            {
+                Console.WriteLine("file is not deleted = " + path);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Ошибка: " + ex.Message);
+        }
+
+    }
+
+    private async Task LoadAudioData(string UnicId)
+    {
+        var path = Path.Combine(HostEnvironment.WebRootPath, "files", UnicId + ".wav");
+        Files.CreateDirectory(Path.GetDirectoryName(path));
+        try
+        {
+            ConsoleCol.WriteLine("RecordType: " + RecordType, ConsoleColor.DarkYellow);
+            IsAudioLoadErr = false;
+            if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
+            {
+                await DbToAudioConverter.UsingDecoderAsync(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+            }
+            else
+            {
+                await DbToAudioConverter.UsingStreamsMakeStereoAsync(AudioDataLeft, AudioDataRight, path, conf);
+            }
+
+            string url = NavigationManager.BaseUri + "files/" + UnicId + ".wav";
+            try
+            {
+                IsAudioLoading = true;
+                StateHasChanged();
+                await JSRuntime.InvokeVoidAsync("createAudioSingletrack", url, FileName, AutoPlay);
+                await Task.Delay(200);
+                IsAudioLoading = false;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка при выполнении JSRuntime в WaveFormPlayer.razor, проверьте кеш браузера");
+                Console.WriteLine(ex.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            IsAudioLoadErr = true;
+            Console.WriteLine("Ошибка при выполнении LoadAudioData в WaveFormPlayer.razor, возможно не поддерживается формат аудио");
+            Console.WriteLine(ex.Message);
+            StateHasChanged();
+        }
+
+
+    }
+
+
+}

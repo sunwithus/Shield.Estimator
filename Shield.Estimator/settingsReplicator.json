@@ -1,0 +1,18 @@
+[
+  {
+    "Selected": false,
+    "DbType": "Oracle",
+    "User": "SYSDBA",
+    "Password": "masterkey",
+    "ServerAddress": "localhost",
+    "Scheme": "test"
+  },
+  {
+    "Selected": true,
+    "DbType": "Postgres",
+    "User": "postgres",
+    "Password": "masterkey",
+    "ServerAddress": "localhost",
+    "Scheme": "test"
+  }
+]

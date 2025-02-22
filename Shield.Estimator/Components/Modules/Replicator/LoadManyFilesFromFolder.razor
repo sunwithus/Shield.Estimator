@@ -1,0 +1,149 @@
+﻿@*LoadManyFilesFromFolder.razor*@
+
+@using System.Text.Json;
+@using System.Text.Json.Serialization;
+
+@using Shield.Estimator.Shared.Components.Modules.Replicator
+@using Shield.Estimator.Shared.Components.Modules._Shared
+
+@inject IConfiguration Configuration 
+
+Выберите необходимые аудиофайлы:
+<br />
+<MudButton Variant="Variant.Outlined" Color="@colorButton" StartIcon="@Icons.Material.Filled.CloudUpload">
+    <InputFile OnChange="LoadFiles" multiple />
+</MudButton>
+<br />
+@if (isLoading)
+{
+    <p>Progress: @string.Format("{0:P0}", progressPercent)</p>
+}
+else if (isVisibleFilesList)
+{
+    <MudSimpleTable Hover="true" Dense="true" FixedHeader="true" Style="height:150px;">
+        <thead>
+            <tr>
+                <th>Имя файла:</th>
+                <th>Дата создания:</th>
+                <th>Размер (байт):</th>
+                <th>Тип файла:</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var file in loadedFiles)
+            {
+                <tr>
+                    <td>@file.Name</td>
+                    <td>@file.LastModified.ToString()</td>
+                    <td>@file.Size</td>
+                    <td>@file.ContentType</td>
+                </tr>
+            } 
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    [Parameter]
+    public string sourceName { get; set; } = "";
+    [Parameter]
+    public List<SettingsDb> SettingsDbList { get; set; }
+    [Parameter]
+    public bool onlyAudioType { get; set; } = true;
+    [Parameter]
+    public MudBlazor.Color colorButton { get; set; }
+    [Parameter]
+    public EventCallback<bool> OnFinishLoading { get; set; }
+
+    private List<IBrowserFile> loadedFiles = new();
+    private long maxFileSize = 1024 * 1024 * 512;
+    private int maxAllowedFiles = 10000;
+    private bool isLoading;
+    private bool isVisibleFilesList = false;
+    private decimal progressPercent;
+    private SettingsDb SettingsDb = null;
+
+    private int filesPerBatch = 10; // Количество файлов на одну партию
+
+    private async Task LoadFiles(InputFileChangeEventArgs e)
+    {
+
+        await OnFinishLoading.InvokeAsync(false);
+
+        isLoading = true;
+        isVisibleFilesList = false;
+        loadedFiles.Clear();
+
+        string pathToSaveTempAudio = Configuration["AudioPathForReplicator"];// + Guid.NewGuid();
+        //Files.CreateDirectory(pathToSaveTempAudio+"\\");
+
+        progressPercent = 0;
+
+        var files = e.GetMultipleFiles(maxAllowedFiles)
+            .Where(file => onlyAudioType ? file.ContentType.Contains("audio") : true)
+            .ToList();
+        int totalFiles = files.Count;
+        int processedFiles = 0;
+
+        for (int i = 0; i < totalFiles; i += filesPerBatch)
+        {
+            var batch = files.Skip(i).Take(filesPerBatch).ToList();
+            var tasks = batch.Select(async file =>
+            {
+                try
+                {
+                    var trustedFileName = file.Name.Replace(" ", "").Replace("—", "");
+                    string filePath = Path.Combine(pathToSaveTempAudio, trustedFileName);
+
+                    using var readStream = file.OpenReadStream(maxFileSize);
+                    using var writeStream = new FileStream(filePath, FileMode.Create);
+
+                    await readStream.CopyToAsync(writeStream);
+
+                    loadedFiles.Add(file);
+
+                    Console.WriteLine($"File saved: {filePath}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"File: {file.Name} Error: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Increment(ref processedFiles);
+                    progressPercent = (decimal)processedFiles / totalFiles;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+        //await CreateJsonForBackgroungService (pathToSaveTempAudio);
+        isLoading = false; // проценты выполнения
+        isVisibleFilesList = true; // таблица с файлами
+        await OnFinishLoading.InvokeAsync(true);
+    }
+
+    public async Task CreateJsonForBackgroungService (string pathToSaveTempAudio) 
+    {
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        DataForBackgroungService DataForBack = new();
+        DataForBack.PathToSaveTempAudio = pathToSaveTempAudio + "//";
+        DataForBack.SourceName = sourceName;
+        DataForBack.DbType = SettingsDb.DbType;
+        DataForBack.Scheme = SettingsDb.Scheme;
+        DataForBack.DbConnectionSettings = SelectDb.ConStringDBA(SettingsDb);
+
+        string pathToJson = pathToSaveTempAudio + ".json";
+    
+        var options = new JsonSerializerOptions { 
+            WriteIndented = true, 
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping //for cirillica
+        };
+        var json = JsonSerializer.Serialize(DataForBack, options);
+        await File.WriteAllTextAsync(pathToJson, json); 
+    }
+
+}
+

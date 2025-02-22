@@ -1,0 +1,20 @@
+﻿<MudDialog>
+    <TitleContent>
+        Удаление задачи
+    </TitleContent>
+    <DialogContent>
+        Точно удалить задачу?
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="Submit">Да</MudButton>
+        <MudButton OnClick="Cancel">Нет</MudButton>
+    </DialogActions>
+</MudDialog>
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; }
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}

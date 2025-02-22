@@ -1,0 +1,36 @@
+﻿@page "/generate"
+
+@using Shield.Estimator.Business.Options.KoboldOptions
+@using Microsoft.Extensions.Options
+
+@inject IOptions<AiOptions> aiOptions
+
+<PageTitle>🗪 Web-chat</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h5">Чат с ֎🇦🇮 => 👦 ❝❞ 🤖</MudText>
+    <MudDivider />
+    <br />
+    <MudPaper Style="height: 84vh;">
+        <iframe id="inlineFrame"
+        title="Inline Frame"
+        src="@IpKoboldUi"
+        style="border: none;"
+        seamless>
+            <p>Твой браузер устарел для отображения элемента iframe</p>
+        </iframe>
+    </MudPaper>
+</MudContainer>
+
+@code{
+    string IpKoboldUi;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        IpKoboldUi = aiOptions.Value.BaseUrl;
+        Uri uri = new Uri(IpKoboldUi);
+        IpKoboldUi = $"{uri.Scheme}://{uri.DnsSafeHost}:{uri.Port}";
+    }
+
+}

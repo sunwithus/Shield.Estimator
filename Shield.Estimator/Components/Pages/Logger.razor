@@ -1,0 +1,65 @@
+﻿@*
+
+@page "/counter-1"
+
+@using Shield.Estimator.Shared.Components.Methods
+@inject ILogger<Logger> n_logger
+
+<PageTitle>Counter 1</PageTitle>
+
+<MudExpansionPanels MultiExpansion="true">
+    <MudExpansionPanel Text="Panel One">
+        Panel One Content
+    </MudExpansionPanel>
+    <MudExpansionPanel Text="Panel Two">
+        Panel Two Content
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+<MudTooltip Text="Delete">
+    <MudIconButton Icon="@Icons.Material.Outlined.Delete" />
+</MudTooltip>
+<MudTooltip Text="Edit">
+    <MudIconButton Icon="@Icons.Material.Outlined.Edit" />
+</MudTooltip>
+<MudTooltip Text="Add">
+    <MudIconButton StartIcon="@Icons.Material.Outlined.Add" />
+</MudTooltip>
+
+<MudSpacer />
+
+<button class="btn btn-primary" @onclick="IncrementCount">IncrementCount => @currentCount</button>
+
+
+@code {
+    private int currentCount = 0;
+    private FileLogger _logger;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(0);
+        _logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+    }
+
+    private void IncrementCount()
+    {
+        n_logger.LogWarning("LogWarning");
+        n_logger.LogCritical("LogCritical");
+        n_logger.LogError("LogError");
+        n_logger.LogInformation("LogInformation");
+        n_logger.LogDebug("LogDebug");
+
+
+        _logger.Log("LogDebug");
+        _logger.Log("LogWarning");
+        _logger.Log("LogError");
+        _logger.Log("LogInformation");
+        _logger.Log("LogDebug");
+
+
+
+        currentCount++;
+    }
+}
+
+*@

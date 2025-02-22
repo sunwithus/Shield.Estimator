@@ -1,0 +1,40 @@
+﻿@*//ChooseOperator.razor*@
+
+@using System.Text.RegularExpressions
+@using Shield.Estimator.Shared.Components.Modules.UserSettings
+
+@rendermode InteractiveServer
+
+<MudText Typo="Typo.body1" Style="display: flex;">
+    <MudSelect ValueChanged="@(value => OnOperatorSelectedChanged(value))" T="string" Label="Оператор:" Value="@operatorName" Clearable="true" Dense="true" Color=@colorButton Style="top:-7px;">
+        @foreach (var oper in operators)
+        {
+            <MudSelectItem Value="@oper">@oper</MudSelectItem>
+        }
+    </MudSelect>
+</MudText>
+
+@code {
+
+    [Parameter]
+    public MudBlazor.Color colorButton { get; set; }
+    [Parameter]
+    public EventCallback<string> OnOperatorSelected { get; set; }
+
+    string operatorName = "";
+    List<string> operators = new();
+
+    private async void OnOperatorSelectedChanged(string value)
+    {
+        operatorName = value;
+        await OnOperatorSelected.InvokeAsync(value);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(0);
+        var settings = await SourceName.ReadAllItemsFromFile();
+        operators = settings.OrderBy(x => x.Key).Select(x => x.Key).ToList();
+    }
+
+}

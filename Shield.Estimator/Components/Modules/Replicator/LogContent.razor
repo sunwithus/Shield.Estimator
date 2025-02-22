@@ -1,0 +1,63 @@
+﻿@*LogContent.razor*@
+
+<MudText Style="position: relative; width: 0px;">
+    <MudButton Style="float:right;" OnClick="OnExpandCollapseClick">@(_expanded ? "▲" : "▼")</MudButton>
+    <br />
+    <MudText Style="float:right; height:0px;" Class="pa-4">
+        <MudStack Spacing="2">
+            <MudCollapse Style="z-index: 5; width: 70vh; max-height: 70vh; overflow: auto; white-space: pre-wrap; display: block;" Expanded="_expanded">
+                @if (!string.IsNullOrEmpty(logContent))
+                {
+                    <MudPaper Class="pa-4 mud-height-full" Style="border: 1px solid lightgrey; border-radius: 5px; ">
+                        <MudText Typo="Typo.body2">
+                            @logContent
+                        </MudText>
+                    </MudPaper>
+
+                }
+                else if (_expanded)
+                {
+                    <MudProgressCircular Color="@Color.Surface" Size="Size.Small" Indeterminate="true" />
+                }
+            </MudCollapse>
+        </MudStack>
+    </MudText>
+</MudText>
+
+@code {
+
+    bool _expanded = false;
+    private string logContent = string.Empty;
+
+    private async void OnExpandCollapseClick()
+    {
+        _expanded = !_expanded;
+        logContent = _expanded ? await ReadLogContent() : "";
+        if (_expanded == true && logContent == "")
+        {
+            logContent = "Пусто";
+        }
+
+    }
+    private async Task<string> ReadLogContent()
+    {
+        try
+        {
+            var logFilePath = Path.Combine(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+            if (File.Exists(logFilePath))
+            {
+                var logLines = await File.ReadAllLinesAsync(logFilePath);
+                Array.Reverse(logLines); // Переворачиваем массив строк
+                return string.Join(Environment.NewLine, logLines);
+            }
+            else
+            {
+                return "Лог-файл не найден.";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Ошибка чтения лог-файла: {ex.Message}";
+        }
+    }
+}

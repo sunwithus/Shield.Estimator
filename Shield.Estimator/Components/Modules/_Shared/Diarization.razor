@@ -1,0 +1,237 @@
+﻿@* Diarization.razor *@
+
+@using System
+@using System.IO
+@using System.Threading.Tasks
+@using Whisper.net.Ggml
+@using Whisper.net
+@using Whisper.net.Wave
+
+@using Microsoft.AspNetCore.Components;
+@using FFMpegCore.Pipes;
+@using FFMpegCore;
+
+@using Shield.Estimator.Shared.Components.Methods
+
+@inject IConfiguration conf
+@inject IWebHostEnvironment HostEnvironment
+@inject NavigationManager NavigationManager
+
+
+<MudButton OnClick="TranscribeWithDiarization" Disabled="IsAudioTranscribing" Variant="Variant.Filled" Color="@ColorTag" Style=" margin-left:auto;">
+    @if (IsAudioTranscribing) {
+        <MudText>Выполняется...</MudText>
+    }
+    else {
+        <MudText>Разбиение на собеседников</MudText>
+    }
+</MudButton>
+
+@if (!string.IsNullOrEmpty(TranscribingResult)) 
+{
+    <MudButton Style="z-index:9999; position: absolute; right:0; top: 0;" Variant="Variant.Filled"  OnClick="@(e => ToggleOverlay())">@(visible ? "Скрыть" : "Отобразить")</MudButton>
+
+    @if (visible)
+    {
+        <MudPaper Class="pa-8" Style="z-index:9998; background-color:#eee; min-height: 100vh; height: 100%; width:50%; position: absolute; right:0; top: 0;">
+            <pre style="word-wrap:break-word; text-wrap:auto;">@TranscribingResult</pre>
+        </MudPaper>
+    }
+}
+
+
+@code {
+
+    [Parameter]
+    public MudBlazor.Color ColorTag { get; set; }
+    [Parameter]
+    public byte[] AudioDataLeft { get; set; }
+    [Parameter]
+    public byte[] AudioDataRight { get; set; }
+    [Parameter]
+    public string RecordType { get; set; }
+
+    private bool IsAudioTranscribing = false;
+    private bool IsFinished = false;
+    private string TranscribingResult = "";
+
+    private bool visible;
+
+    public void ToggleOverlay()
+    {
+        visible = !visible;
+    }
+
+    private async Task TranscribeWithDiarization() 
+    {
+        try 
+        {
+            IsAudioTranscribing = true;
+            IsFinished = false;
+            TranscribingResult = "";
+            visible = true;
+
+            //var ggmlType = GgmlType.LargeV3Turbo;
+            var modelFileName = conf["PathToWhisperForDiarization"];
+            string UnicId = Guid.NewGuid().ToString();
+            string wavFileName = await LoadAudioData(UnicId);
+            TranscribingResult = "Выгрузка аудио...";
+            StateHasChanged();
+
+            if (!File.Exists(modelFileName))
+            {
+                Console.WriteLine("Модель не найдена");
+            }
+
+            TranscribingResult = "Загрузка модели large-v3...";
+            StateHasChanged();
+            using var whisperFactory = WhisperFactory.FromPath(modelFileName);
+            using var processor = whisperFactory.CreateBuilder()
+            .WithLanguage("auto")
+            .Build();
+
+            // This section opens the audio file and converts it to a wav file.
+            using var fileStream = File.OpenRead(wavFileName);
+
+            var waveParser = new WaveParser(fileStream);
+            await waveParser.InitializeAsync();
+            var channels = waveParser.Channels;
+            var sampleRate = waveParser.SampleRate;
+            var bitsPerSample = waveParser.BitsPerSample;
+            var headerSize = waveParser.DataChunkPosition;
+            var frameSize = bitsPerSample / 8 * channels;
+
+            var samples = await waveParser.GetAvgSamplesAsync(CancellationToken.None);
+            // This section processes the audio file and prints the results (start time, end time and text) to the console.
+            TranscribingResult = "Распознавание началось...";
+            StateHasChanged();
+            TranscribingResult = " ";
+            await foreach (var result in processor.ProcessAsync(samples))
+            {
+                // Get the wave position for the specified time interval
+                var startSample = (long)result.Start.TotalMilliseconds * sampleRate / 1000;
+                var endSample = (long)result.End.TotalMilliseconds * sampleRate / 1000;
+
+                // Calculate buffer size.
+                var bufferSize = (int)(endSample - startSample) * frameSize;
+                var readBuffer = new byte[bufferSize];
+
+                // Set fileStream position.
+                fileStream.Position = headerSize + startSample * frameSize;
+
+                // Read the wave data for the specified time interval, into the readBuffer.
+                var read = await fileStream.ReadAsync(readBuffer.AsMemory());
+
+                // Process the readBuffer and convert to shorts.
+                var buffer = new short[read / 2];
+                for (var i = 0; i < buffer.Length; i++)
+                {
+                    // Handle endianess manually and convert bytes to Int16.
+                    buffer[i] = BitConverter.IsLittleEndian
+                        ? (short)(readBuffer[i * 2] | (readBuffer[i * 2 + 1] << 8))
+                        : (short)((readBuffer[i * 2] << 8) | readBuffer[i * 2 + 1]);
+                }
+
+                // Iterate in the wave data to calculate total energy in each channel, and find the channel with the maximum energy.
+                var energy = new double[channels];
+                var maxEnergy = 0d;
+                var maxEnergyChannel = 0;
+                for (var i = 0; i < buffer.Length; i++)
+                {
+                    var channel = i % channels;
+                    energy[channel] += Math.Pow(buffer[i], 2);
+
+                    if (energy[channel] > maxEnergy)
+                    {
+                        maxEnergy = energy[channel];
+                        maxEnergyChannel = channel;
+                    }
+                }
+
+                //Console.WriteLine($"{result.Start}->{result.End}: {result.Text}. Max energy in channel: {maxEnergyChannel}");
+                Console.WriteLine($"Говорящий {maxEnergyChannel}: {result.Text}");
+                TranscribingResult += $"Собеседник {maxEnergyChannel+1}: {result.Text} \n";
+                StateHasChanged();
+            
+            }
+
+            IsAudioTranscribing = false;
+            IsFinished = true;
+            fileStream.Close();
+            await DeleteAudioFileAsync(UnicId);
+
+            TranscribingResult += "\nЗавершено.\n";
+        }
+        catch (Exception ex)
+        {
+            TranscribingResult += $"Непредвиденная ошибка: {ex.Message}";
+            IsAudioTranscribing = false;
+            IsFinished = true;
+        }
+    }
+    /*
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+            {
+            if (firstRender)
+            {
+            string UnicId = Guid.NewGuid().ToString();
+            await LoadAudioData(UnicId);
+            await DeleteAudioFileAsync(UnicId);
+
+    }
+    }
+    */
+    private async Task DeleteAudioFileAsync(string UnicId)
+    {
+        await Task.Delay(1200); // Ждём, чтобы пользователь мог воспроизвести аудио
+        var path = Path.Combine(HostEnvironment.WebRootPath, "files", UnicId + ".wav");
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+            if (File.Exists(path))
+            {
+                Console.WriteLine("file is not deleted = " + path);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Ошибка: " + ex.Message);
+        }
+
+    }
+
+    /// <summary>
+    /// Выгружает из БД аудио, сохраняет в папке (wwwroot)\files
+    /// </summary>
+    /// <param name="UnicId"></param>
+    /// <returns></returns>
+    private async Task<string> LoadAudioData(string UnicId)
+    {
+        var path = Path.Combine(HostEnvironment.WebRootPath, "files", UnicId + ".wav");
+        Files.CreateDirectory(Path.GetDirectoryName(path));
+        try
+        {
+            ConsoleCol.WriteLine("RecordType: " + RecordType, ConsoleColor.DarkYellow);
+            if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
+            {
+                await DbToAudioConverter.UsingDecoderAsync(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+            }
+            else
+            {
+                await DbToAudioConverter.UsingStreamsMakeStereoAsync(AudioDataLeft, AudioDataRight, path, conf);
+            }
+            return path;
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Ошибка при выполнении LoadAudioData в WaveFormPlayer.razor, возможно не поддерживается формат аудио");
+            Console.WriteLine(ex.Message);
+            StateHasChanged();
+            return "";
+        }
+    }
+}

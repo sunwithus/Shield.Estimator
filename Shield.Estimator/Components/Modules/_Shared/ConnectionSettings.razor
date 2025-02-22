@@ -1,0 +1,202 @@
+﻿@*//ConnectionSettings.razor*@
+
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using System.Collections.Generic
+@using Oracle.ManagedDataAccess.Client
+@using Npgsql
+
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore
+@using Shield.Estimator.Shared.Components.Modules.Replicator
+@using Shield.Estimator.Shared.Components.Modules._Shared
+
+@inject IDbContextFactory DbContextFactory
+
+@rendermode InteractiveServer
+
+<MudText Color="@colorButton" Typo="Typo.body1" Style="position:relative; top:-5px; display: flex; justify-content:space-between; align-items: center;">
+    <MudText>
+        Текущие настройки БД: <b>@currentConnection</b>
+    </MudText>
+    <MudText>
+        <MudButton Style="top:-5px;" Variant="Variant.Outlined" Color="@colorButton" OnClick="@(e => ToggleOverlay(true))">Настройки БД</MudButton>
+        <MudOverlay Visible="isVisible" DarkBackground="true" Absolute="false" >
+
+            <EditForm Model="@SettingsDb" style="width:500px">
+
+                <MudCard>
+                    <MudCardContent>
+
+                        <MudToggleGroup Value="@SelectedDb" ValueChanged="@OnDbTypeChanged" T="string" Outlined="true" Delimiters="true" Size="Size.Medium" Color="@colorButton" CheckMark="true" FixedContent="true" Style="width: 29rem">
+                            <MudToggleItem Value="@("Oracle")" />
+                            <MudToggleItem Value="@("Postgres")" />
+                            @*<MudToggleItem Value="@("Interbase")" />*@
+                        </MudToggleGroup>
+
+                        <MudTextField Label="Пользователь" @bind-Value="SettingsDb.User" For="@(() => SettingsDb.User)" />
+                        <MudTextField Label="Пароль" HelperText="По умолчанию - masterkey" Class="mt-3"
+                        @bind-Value="SettingsDb.Password" For="@(() => SettingsDb.Password)" InputType="InputType.Password" />
+                        <MudTextField Label="IP-адрес сервера / sprutora" Class="mt-3"
+                        @bind-Value="SettingsDb.ServerAddress" For="@(() => SettingsDb.ServerAddress)" />
+                        <MudTextField Label="Схема базы данных" Class="mt-3"
+                        @bind-Value="SettingsDb.Scheme" For="@(() => SettingsDb.Scheme)" />
+
+                    </MudCardContent>
+                    <MudCardContent Style="height:130px">
+                        @if(IsProgressVisible) {<MudProgressCircular Color="@colorButton" Indeterminate="true" />}
+                        <MudText Style="white-space: pre-wrap; max-width: 450px; position: relative; top: -25px" Color="@colorButton">@((MarkupString)message)</MudText>
+                    </MudCardContent>
+
+                    <MudCardActions>
+                        <MudButton OnClick="@(e => TestButtonClick())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Тест подключения</MudButton>
+                        <MudButton OnClick="@(e => ApplyButtonClick())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton" Class="ml-auto">Применить</MudButton>&nbsp;
+                        <MudButton Variant="Variant.Outlined" Color="@colorButton" OnClick="@(e => CancelButtonClick())">Отмена</MudButton>
+                    </MudCardActions>
+                </MudCard>
+
+            </EditForm>
+        </MudOverlay>
+    </MudText>
+</MudText>
+<MudDivider />
+<br />
+
+@code {
+
+    [Parameter]
+    public MudBlazor.Color colorButton { get; set; }
+    [Parameter]
+    public List<SettingsDb> SettingsDbList { get; set; }
+    [Parameter]
+    public string FileSettingsDb { get; set; }
+    [Parameter]
+    public EventCallback<string> OnSettingsChanged { get; set; }
+
+    private bool isVisible = false;
+    private bool IsProgressVisible = false;
+    string message = "";
+    string currentConnection = "";
+    private string? SelectedDb { get; set; }
+    private SettingsDb SettingsDb = null;
+
+    private BaseDbContext _context = null;
+
+    public void Dispose()
+    {
+        _context?.Dispose();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        isVisible = false;
+        IsProgressVisible = false;
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        if (SettingsDb != null)
+        {
+            currentConnection = $"{SettingsDb.DbType} => {SettingsDb.ServerAddress} / {SettingsDb.Scheme}";
+        }
+        else 
+        {
+            SettingsDb = new SettingsDb();
+        }
+        SelectedDb = SettingsDb.DbType;
+
+        await Task.Delay(1);
+    }
+
+    private void OnDbTypeChanged(string value)
+    {
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.DbType == value);
+        SelectedDb = SettingsDb.DbType;
+        message = "";
+        StateHasChanged();
+        Console.WriteLine($"Selected database type changed to: {value}");
+    }
+
+    private async Task SaveSettingsToFile(List<SettingsDb> SettingsDbList)
+    {
+        string json = JsonSerializer.Serialize(SettingsDbList);
+        await File.WriteAllTextAsync(FileSettingsDb, json);
+        StateHasChanged();
+    }
+
+    private async void TestButtonClick()
+    {
+        message = "";
+        IsProgressVisible = true;
+        StateHasChanged();
+        await CheckDatabaseConnection();
+        IsProgressVisible = false;
+        StateHasChanged();
+    }
+
+    private async void ApplyButtonClick()
+    {
+        SettingsDbList.ForEach(settingsDb => settingsDb.Selected = false);
+        var index = SettingsDbList.FindIndex(s => s.DbType == SettingsDb.DbType);
+        SettingsDb.Selected = true;
+        if (index != -1)
+        {
+            SettingsDbList[index] = SettingsDb;
+        }
+        await SaveSettingsToFile(SettingsDbList);
+        currentConnection = $"{SettingsDb.DbType} => {SettingsDb.ServerAddress} / {SettingsDb.Scheme}";
+        await OnSettingsChanged.InvokeAsync(); //оповещение родительского элемента о сохранении настроек
+        await ToggleOverlay(false);
+
+    }
+
+    private async void CancelButtonClick()
+    {
+        await OnSettingsChanged.InvokeAsync(); //оповещение родительского элемента, снова загрузит настройки
+        await ToggleOverlay(false);
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        if(SettingsDb != null)SelectedDb = SettingsDb.DbType;
+    }
+
+    public async Task ToggleOverlay(bool value)
+    {
+        await Task.Delay(0);
+        isVisible = value;
+        message = "";
+        StateHasChanged();
+    }
+
+    private async Task CheckDatabaseConnection()
+    {
+        try
+        {
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            if (conStringDBA != "")
+            {
+                _context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme);
+                //if (SettingsDb.DbType == "Oracle") await _context.Database.ExecuteSqlRawAsync($"ALTER SESSION SET CURRENT_SCHEMA = {SettingsDb.Scheme};");
+                long? maxKey = await _context.SprSpeechTables.MaxAsync(x => x.SInckey) ?? 0;
+                message += $"Соединение с {SettingsDb.DbType} установлено!\n";
+                message += "Схема: " + SettingsDb.Scheme + " выбрана! \nМаксимальный идентификатор: " + maxKey + ".";
+                await _context.Database.CloseConnectionAsync();
+            }
+        }
+
+        catch (OracleException ex)
+        {
+            message += "Oracle Error: " + ex.Message + "\n\n";
+        }
+        catch (NpgsqlException ex)
+        {
+            message += "Postgres Error: " + ex.Message + "\n\n";
+            if (ex is PostgresException postgresEx)
+            {
+                message += "SQL State: " + postgresEx.SqlState + "\n\n";
+            }
+        }
+        catch (Exception ex)
+        {
+            message += "General Error: " + ex.Message + "\n\n";
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+}

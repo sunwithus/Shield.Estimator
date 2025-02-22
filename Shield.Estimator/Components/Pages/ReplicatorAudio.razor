@@ -1,0 +1,290 @@
+﻿@*ReplicatorAudio.razor*@
+
+@page "/audio-replicator"
+@rendermode InteractiveServer
+
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using System.ComponentModel
+@using Microsoft.AspNetCore.SignalR.Client
+
+@using Polly
+@using Polly.Retry
+
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
+@using Shield.Estimator.Shared.Components.Modules.Replicator
+@using Shield.Estimator.Shared.Components.Modules._Shared
+
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar SnackbarService
+
+@inject IConfiguration _configuration
+@inject IDbContextFactory _dbContextFactory
+
+<PageTitle>🛢 Replicator Ora/Pg</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h5">Репликация аудио в Oracle / Postgres 🎧 => 📦</MudText>
+    <MudDivider />
+    <br />
+
+    <MudOverlay Visible="!ReplSingleton.ReplInstance.IsStoped" LightBackground="true" Absolute="true">
+        <MudText>Процесс занят.</MudText>
+        <MudText>Идёт выполнение, подождите... @ReplSingleton.ReplInstance.ProgressExec %</MudText>
+    </MudOverlay>
+
+    @if (SettingsDbList != null)
+    {
+        <ConnectionSettings colorButton="@colorButton" OnSettingsChanged="OnSettingsChanged" SettingsDbList="@SettingsDbList" FileSettingsDb="@FileSettingsDb" />
+    }
+
+    <MudText Style="display:flex; justify-content: space-between;">
+        <MudText Style="width: 325px;">
+            <ChooseOperator colorButton="@colorButton" OnOperatorSelected="HandleOperatorSelected" />
+        </MudText>
+        <LogContent />
+    </MudText>
+
+    @if(!string.IsNullOrEmpty(operatorName))
+    {
+        <LoadManyFilesFromFolder sourceName="@operatorName" SettingsDbList="@SettingsDbList" onlyAudioType="@true" colorButton="@colorButton" OnFinishLoading="HandleFilesLoaded" />
+    }
+    else
+    {
+        <MudText Typo="Typo.body1" Color="@colorButton">Выберите значение "Оператор"</MudText>
+    }
+
+    @if(isFilesLoaded)
+    {
+        <br />
+        <MudButton OnClick="@(async () => await StartReplication())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Пуск!</MudButton>
+    }
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <MudSimpleTable Dense="true" FixedHeader="true" Style="height:150px;">
+            <thead>
+                <tr>
+                    <th>Выполнение:</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>
+                        @((MarkupString)message)
+                    </td>
+                </tr>
+
+            </tbody>
+        </MudSimpleTable>
+    }
+    else
+    {
+        <MudText Style="height:150px;" />
+    }
+
+</MudContainer>
+
+
+@code {
+    private string statusText = string.Empty;
+    private string message = string.Empty;
+    FileLogger _logger = null;
+
+    MudBlazor.Color colorButton = Color.Surface;
+    private string operatorName = "";
+    private bool isFilesLoaded = false;
+
+    private List<SettingsDb> SettingsDbList = null;
+    private SettingsDb SettingsDb = null;
+    private string FileSettingsDb = Path.Combine(AppContext.BaseDirectory, "settingsReplicator.json");
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        ReplSingleton.ReplInstance.ReplPropertyChanged += Singleton_PropertyChanged;
+        StateHasChanged();
+
+        _logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+
+
+    }
+
+    private void DeleteCopiedFiles()
+    {
+        message = string.Empty;
+        string pathToAudio = _configuration["AudioPathForReplicator"];
+        string[] filesAudio = null;
+        if (Directory.Exists(pathToAudio))
+        {
+            filesAudio = Directory.GetFiles(pathToAudio);
+        }
+        if (filesAudio != null)
+        {
+            Files.DeleteFilesByPath(filesAudio);
+        }
+        message += $"<div>Файлы удалены</div>";
+    }
+
+    private async Task StartReplication()
+    {
+        message = string.Empty;
+        string pathToAudio = _configuration["AudioPathForReplicator"];
+        string[] filesAudio = null;
+        if (Directory.Exists(pathToAudio))
+        {
+            filesAudio = Directory.GetFiles(pathToAudio);
+        }
+        if (filesAudio == null)
+        {
+            Console.WriteLine("Repl => Нет аудио файлов для репликации.");
+            message = $"<div>Файлы в директории отсутствуют</div>";
+            return;
+        }
+
+        int count = 0;
+        int total = filesAudio.Length;
+        ReplSingleton.ReplInstance.IsStoped = false;
+
+        try
+        {
+            SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            using (var context = await _dbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+            {
+                foreach (var filePath in filesAudio)
+                {
+                    try
+                    {
+                        await ProcessSingleAudio(filePath, SettingsDb, context);
+                        Console.WriteLine($"Repl => Файл обработан: {filePath}");
+                        await InvokeAsync(StateHasChanged);
+                        count++;
+                        ReplSingleton.ReplInstance.ProgressExec = count * 100 / total;
+                    }
+                    catch (Exception ex)
+                    {
+                        ConsoleCol.WriteLine($"{DateTime.Now} - Repl => Ошибка при обработке файла {filePath}: {ex.Message}", ConsoleColor.Red);
+                        message = $"<div>❌ Ошибка при обработке файла {filePath}: {ex.Message}</div>" + message;
+                        _logger.Log($" Ошибка при обработке файла {filePath}: {ex.Message}");
+                    }
+                }
+                await context.Database.CloseConnectionAsync();
+                _logger.Log($"{SettingsDb.DbType} => {SettingsDb.Scheme}. Выполнено: {count}/{total}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleCol.WriteLine($"{DateTime.Now} - Repl => Ошибка подключения к БД: {ex.Message}", ConsoleColor.Red);
+            message = $"<div>❌ Ошибка подключения к БД: {ex.Message}</div>";
+        }
+
+        Files.DeleteFilesByPath(filesAudio);
+        ReplSingleton.ReplInstance.IsStoped = true;
+        ReplSingleton.ReplInstance.ProgressExec = 0;
+
+    }
+
+    private async Task ProcessSingleAudio(string filePath, SettingsDb SettingsDb, BaseDbContext context)
+    {
+        string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+        var (durationOfWav, audioDataLeft, audioDataRight) = await AudioToDbConverter.FFmpegStream(filePath, _configuration["PathToFFmpegExeForReplicator"]);
+
+        Parse.ParsedIdenties fileData = Parse.FormFileName(filePath); //если не удалось, возвращает {DateTime.Now, "", "", "", 2}
+        string isIdentificators = (fileData.Talker == "" && fileData.Caller == "" && fileData.IMEI == "") ? "✔️ без идентификаторов" : "✅ с идентификаторами";
+        message = $"<div>{isIdentificators}. Успешно. => {filePath}</div>" + message;
+
+        // Создание талиц записи
+        string codec = "PCMA";
+        try
+        {
+            long maxKey = await context.SprSpeechTables.MaxAsync(x => (long?)x.SInckey) ?? 0;
+            var speechTableEntity = CreateSpeechTableEntity(fileData, durationOfWav, codec, maxKey, operatorName);
+            var data1TableEntity = CreateData1TableEntity(audioDataLeft, audioDataRight, codec, maxKey);
+            await SaveEntitiesToDatabase(context, speechTableEntity, data1TableEntity);
+        }
+        catch (Exception ex)
+        {
+            ConsoleCol.WriteLine($"Repl_SaveEntitiesToDatabase = > {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    private async Task SaveEntitiesToDatabase(BaseDbContext context, SprSpeechTable speechEntry, SprSpData1Table dataEntry)
+    {
+
+        //using var transaction = await context.Database.BeginTransactionAsync();
+        try
+        {
+            context.SprSpeechTables.Add(speechEntry);
+            context.SprSpData1Tables.Add(dataEntry);
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            ConsoleCol.WriteLine("BackGroung Repl => Error SaveEntitiesToDatabase => " + ex, ConsoleColor.Red);
+            throw;
+        }
+
+    }
+    private SprSpeechTable CreateSpeechTableEntity(Parse.ParsedIdenties fileData, int durationOfWav, string codec, long maxKey, string sourceName)
+    {
+        //string durationString = string.Format("+00 {0:D2}:{1:D2}:{2:D2}.000000", durationOfWav / 3600, (durationOfWav % 3600) / 60, durationOfWav % 60);
+        TimeSpan durationTimeSpan = TimeSpan.FromSeconds(durationOfWav);
+
+        return new SprSpeechTable
+            {
+                SInckey = maxKey + 1,
+                SType = 0,
+                SPrelooked = 0,
+                SDeviceid = "MEDIUM_R",
+                SDatetime = fileData.Timestamp,
+                SDuration = durationTimeSpan,
+                SSysnumber3 = fileData.IMEI,
+                SSourcename = sourceName,
+                STalker = fileData.Talker,
+                SUsernumber = fileData.Caller,
+                SCalltype = fileData.Calltype,
+                SEventcode = codec
+            };
+    }
+
+    private SprSpData1Table CreateData1TableEntity(byte[]? audioDataLeft, byte[]? audioDataRight, string codec, long maxKey)
+    {
+        return new SprSpData1Table
+            {
+                SInckey = maxKey + 1,
+                SOrder = 1,
+                SRecordtype = codec,
+                SFspeech = audioDataLeft,
+                SRspeech = audioDataRight
+            };
+    }
+
+    private async Task OnSettingsChanged()
+    {
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        Console.WriteLine("Настройки подключения к БД для репликатора изменились");
+    }
+
+    private void HandleOperatorSelected(string value)
+    {
+        operatorName = value;
+        Console.WriteLine($"HandleOperatorSelected: {operatorName}");
+        StateHasChanged();
+    }
+
+    private void HandleFilesLoaded(bool value)
+    {
+        isFilesLoaded = value;
+        if (!isFilesLoaded) message = "";
+        Console.WriteLine($"HandleFilesLoaded: Файлы загружены: {value}");
+    }
+    private void Singleton_PropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+}

@@ -1,0 +1,88 @@
+﻿@*SettingsOper.razor*@
+
+@page "/source-settings"
+
+@using Shield.Estimator.Shared.Components.Modules.UserSettings
+@using MudBlazor
+
+@inject IDialogService DialogService
+
+<PageTitle>🛠 Configuration</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h5">Пользовательские настройки => ⚙️</MudText>
+    <MudDivider />
+
+    <MudText Typo="Typo.body1" Style="position:relative; top:-2px; display: flex; justify-content:space-between; align-items: center;">
+        <MudTextField @bind-Value="newKey" Margin="Margin.Dense"  T="string" Label="Имя источника (оператор)" />&emsp;
+        <MudText Style="position:relative; top:4px;">
+            <MudButton Variant="Variant.Outlined" OnClick="AddOrUpdateSetting">Сохранить 💾</MudButton>
+        </MudText>
+    </MudText>
+    <MudDivider Style="position:relative; top:4px; padding-bottom:8px;" />
+
+    <MudTextField @bind-Value="newValue" Lines="5" FullWidth Label="Шаблон запроса" Variant="Variant.Outlined" />
+    
+    <MudSimpleTable RowClass="cursor-pointer" Hover="true" Dense="true" FixedHeader="true">
+        <thead>
+            <tr>
+                <th>№ &emsp; Имя источника</th>
+                <th style="width:80px;">Действия</th>
+            </tr>
+        </thead>
+
+            <tbody>
+                @foreach (var (setting, index) in Settings.Select((setting, index) => (setting, index + 1)))
+                {
+                    <tr>
+                        <MudButton FullWidth Style="justify-content: flex-start; padding:0; border-bottom:1px solid #e0e0e0;" OnClick="@(e => EditSetting(setting.Key, setting.Value))">
+                            <td>@index</td>
+                            <td><MudText>@setting.Key</MudText></td>
+                        </MudButton>
+                        <td>
+                            <MudButton Style="padding:0;" OnClick="@(e => DeleteSetting(setting.Key))">✖️</MudButton>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+    </MudSimpleTable>
+
+</MudContainer>
+
+@code {
+    private Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
+    private string newKey { get; set; } = string.Empty;
+    private string newValue { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(0);
+        Settings = await SourceName.ReadAllItemsFromFile();
+        Settings = await SourceName.ReadAllItemsFromFile();
+        Settings = Settings.OrderBy(x => x.Key).ToDictionary(x => x.Key, x => x.Value);
+    }
+
+    private async Task AddOrUpdateSetting()
+    {
+        if (!string.IsNullOrEmpty(newKey) && !string.IsNullOrEmpty(newValue))
+        {
+            await SourceName.SaveItemAsync(newKey, newValue);
+            Settings = await SourceName.ReadAllItemsFromFile();
+            newKey = string.Empty;
+            newValue = string.Empty;
+        }
+    }
+
+    private void EditSetting(string key, string value)
+    {
+        newKey = key;
+        newValue = value;
+    }
+
+    private async Task DeleteSetting(string key)
+    {
+        await SourceName.DeleteItemByKey(key);
+        Settings = await SourceName.ReadAllItemsFromFile();
+    }
+
+}

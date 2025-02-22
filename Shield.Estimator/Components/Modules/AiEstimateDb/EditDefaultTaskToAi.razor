@@ -1,0 +1,53 @@
+﻿@* EditDefaultTaskToAi.razor *@
+
+@rendermode InteractiveServer
+
+<MudText Typo="Typo.body2" >
+    запрос по-умолчанию
+    <MudIconButton style="width: 48px; height: 48px" Icon="@Icons.Material.Filled.SettingsEthernet" Color="@colorButton" OnClick="@(()=>ToggleOverlay(true))" />
+</MudText>
+<MudOverlay Visible="isVisible" DarkBackground="true" Absolute="false" ZIndex="11">
+    <MudCard Style="width:500px">
+        <MudCardHeader>Редактирование.</MudCardHeader>
+        <MudTextField Style="margin:10px;" @bind-Value="preTextValue" Lines="14" Label="Запрос (если не задан в пользовательских настройках):" Variant="Variant.Outlined"></MudTextField>
+        <MudCardActions>
+            <MudButton OnClick="ApplyButtonClick" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton" Class="ml-auto">Применить</MudButton>&nbsp;
+            <MudButton Variant="Variant.Outlined" Color="@colorButton" OnClick="CancelButtonClick">Отмена</MudButton>
+        </MudCardActions>
+    </MudCard>
+</MudOverlay>
+
+
+@code {
+    [Parameter]
+    public MudBlazor.Color colorButton { get; set; }
+    [Parameter]
+    public EventCallback OnApplyButtonClick { get; set; }
+
+    private string preTextValue = string.Empty; // есть ли в тексте явная информация о нарушениях законодательства Российской Федерации, например, взятках, кражах, незаконной миграции, обороте наркотиков, экономических преступлениях? Обязательно дай ответ только одним символом - цифрой 2 или 1 или 0, без слова Ответ (т.е. цифрой 2 - если очень серьёзное нарушение, 1 - если есть нарушение и цифрой 0 - если нарушений нет. Если не уверен - отвечай цифрой 0. Не отвечай цифрой 2 и 1, если текст непонятен, абсурден или бесструктурен). После кратко опиши о чём этот текст, ответ должен быть только на русском языке. Вот текст:
+    private bool isVisible = false;
+    private string FilePretext = Path.Combine(AppContext.BaseDirectory, "pretextDefault.ini");
+
+    protected override async Task OnInitializedAsync()
+    {
+        preTextValue = await IniFile.ReadFile(FilePretext);
+    }
+
+    private async Task ApplyButtonClick()
+    {
+        await IniFile.WriteFile(FilePretext, preTextValue);
+        ToggleOverlay(false);
+        await OnApplyButtonClick.InvokeAsync();
+    }
+
+    private async void CancelButtonClick()
+    {
+        ToggleOverlay(false);
+        preTextValue = await IniFile.ReadFile(FilePretext);
+    }
+
+    public void ToggleOverlay(bool value)
+    {
+        isVisible = value;
+    }
+}

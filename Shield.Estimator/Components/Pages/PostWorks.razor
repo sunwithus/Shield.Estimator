@@ -1,0 +1,509 @@
+﻿@page "/postworks"
+@rendermode InteractiveServer
+
+@using Shield.Estimator.Shared.Components.Modules._Shared
+@using Shield.Estimator.Shared.Components.Modules.AiEstimateDb
+@using Shield.Estimator.Shared.Components.Modules.PostWorks
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
+
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using System.Text
+
+@inject IJSRuntime JSRuntime
+@inject IDbContextFactory DbContextFactory
+
+
+<style>
+    .mud-table-row td {
+    font-size: 10px;
+    }
+
+    .mud-table-row th {
+    font-size: 12px;
+    }
+
+    .prelooked {
+    background-color: lightyellow;
+    }
+
+
+    .selected {
+    background-color: #1E88E5 !important;
+    }
+
+    .selected > td {
+    color: white !important;
+    }
+
+    .selected > td .mud-input {
+    color: white !important;
+    }
+</style>
+<PageTitle>𝖕𝖔𝖘𝖙 Mini</PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h5">Postworks Mini 🦕</MudText>
+    <MudDivider />
+    <br />
+
+    @if (SettingsDbList != null)
+    {
+        <ConnectionSettings colorButton="@colorTag" OnSettingsChanged="OnSettingsChanged" SettingsDbList="@SettingsDbList" FileSettingsDb="@FileSettingsDb" />
+    }
+
+    <MudText Style="padding-bottom: 7px;">
+        <MudText>
+            @* // Период, Длительность *@
+            <MudGrid Spacing="4" Justify="Justify.FlexStart">
+                <MudItem>
+                    <MudTextField ValueChanged="@OnStartDateTimeChanged" T="DateTime" Format="s" Label="От даты:" InputType="InputType.DateTimeLocal" Value="@StartDateTime" />
+                </MudItem>
+                <MudItem>
+                    <MudTextField ValueChanged="@OnEndDateTimeChanged" T="DateTime" Format="yyyy-MM-ddTHH:mm:ss" Label="По дату:" InputType="InputType.DateTimeLocal" Value="@EndDateTime" />
+                </MudItem>
+                <MudItem>
+                    <MudNumericField ValueChanged="@OnDurationChanged" T="int" Label="Длительность (сек.) от:" Value="@Duration" Min="0" />
+                </MudItem>
+                <MudItem>
+                    <MudCheckBox ValueChanged="@OnPrelookedChanged" T="bool" Label="Показывать просмотренные" Value="@Prelooked" />
+                </MudItem>
+                <MudItem>
+                    <MudButton Style="top:7px;" Variant="Variant.Outlined" Disabled="@IsCountRecordsProgress" OnClick="GetCountRecords">
+                        @if (IsCountRecordsProgress)
+                        {
+                            <MudProgressCircular Color="@colorTag" Size="Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            <MudText>Применить</MudText>
+                        }
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudText>
+    </MudText>
+    <MudText Align="Align.Center">
+        <i style="top:7px;">@CountRecordsMessage</i><br />
+        @if (!string.IsNullOrEmpty(CountRecordsMessage) && SInckeyRecords != null && SInckeyRecords.Count > 0)
+        {
+            <MudDivider />
+            <br />
+            <MudButton Variant="Variant.Outlined" OnClick="GetDataRecords" Disabled="@(IsCountRecordsProgress)">Выполнить ▶</MudButton>
+            <br />
+            <br />
+        }
+    </MudText>
+    @if (ListDataRecords != null)
+    {
+        <MudText Align="Align.Center" Typo="Typo.subtitle2">Для отметки обработки и перехода к следующей записи используйте клик правой кнопкой мыши</MudText>
+    }
+    <div @oncontextmenu="(() => HandleRightClick())" @oncontextmenu:preventDefault="true" class="overlay" style="@((IsVisiblePostWorksPlayer ? "visibility:visible;" : "visibility:hidden;")) @(ExpandedWindow ? "position: absolute; top: -70px; z-index: 5000; height:100vh;" : "position: sticky; top: 0; height:100%;")  left: 0; width:100%;  ">
+        @if (SettingsDb != null)
+        {
+            @if (ListDataRecords == null && IsCountRecordsProgress)
+            {
+                <MudProgressLinear Size="Size.Large" Color="@colorTag" Indeterminate="true" Class="my-7" />
+            }
+            else if (ListDataRecords != null)
+            {
+                <div style="display:flex; background-color:#ccc; opacity:0.7; justify-content:space-between; @(!ExpandedWindow ? "top: 63px; position: sticky;" :"top: 0; width:100%; position:fixed;") left: 0; height:32px; align-self: flex-start; z-index:5007;">
+                    <MudText>
+                        <MudIconButton Icon="@Icons.Material.Filled.NavigateBefore" Variant="Variant.Filled" Color="@colorTag" Size="Size.Small" OnClick="@NavigateToPreviousItem" />
+                        <MudIconButton Icon="@Icons.Material.Filled.NavigateNext" Variant="Variant.Filled" Color="@colorTag" Size="Size.Small" OnClick="@NavigateToNextItem" />
+                        <MudText Typo="Typo.body2" Class="align-self-center d-inline">Ключ текущего элемента: @selectedItem1?.SInckey / Всего: @totalItems</MudText>
+                    </MudText>
+                    <MudText>
+                        @*<MudIconButton OnClick="@(async () => await GetDataRecords())" Icon="@Icons.Material.Filled.Refresh" Variant="Variant.Filled" Color="@colorTag" Size="Size.Small" />*@
+                        <MudIconButton OnClick="@(() => ExpandToFullScreen())" Icon="@Icons.Material.Filled.Expand" Variant="Variant.Filled" Color="@colorTag" Size="Size.Small" />
+                        <MudIconButton OnClick="OnPostWorksPlayerClosed" Icon="@Icons.Material.Filled.Close" Variant="Variant.Filled" Color="@colorTag" Size="Size.Small" />
+                    </MudText>
+                </div>
+
+                @if (ListDataRecords != null)
+                {
+
+                    <MudTable T="SprSpeechTable" Dense="true" Bordered="false"
+                    Hover="true" FixedHeader="true" FixedFooter="true" Striped="false"
+                    RowClass="cursor-pointer" OnRowClick="@OnRowClick"
+                    RowClassFunc="@SelectedRowClassFunc" @ref="mudTable"
+                    Style="overflow:visible; align-self: flex-start;"
+                    Height="100%" Breakpoint="Breakpoint.Sm"
+                    @bind-SelectedItem="selectedItem1"
+                    ServerData="ServerReload">
+
+                        <ColGroup>
+                            <col style="width: 40px;" />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                            <col />
+                        </ColGroup>
+
+                        <HeaderContent>
+                            <MudTh><MudTableSortLabel SortLabel="SInckey" T="SprSpeechTable">Ключ</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortLabel="SDatetime" T="SprSpeechTable">Дата/время</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortLabel="SDuration" T="SprSpeechTable">Длительность</MudTableSortLabel></MudTh>
+                            <MudTh><MudTableSortLabel SortLabel="SNotice" T="SprSpeechTable">Примечание</MudTableSortLabel></MudTh>
+                            <MudTh>Собеседник</MudTh>
+                            <MudTh>Польз. номер</MudTh>
+                            <MudTh>CID</MudTh>
+                            <MudTh>LAC</MudTh>
+                            <MudTh>БС</MudTh>
+                            <MudTh>Язык</MudTh>
+                            <MudTh>Источник</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.SInckey</MudTd>
+                            <MudTd>@context.SDatetime</MudTd>
+                            <MudTd>@context.SDuration</MudTd>
+                            <MudTd>@context.SNotice</MudTd>
+                            <MudTd>@context.STalker</MudTd>
+                            <MudTd>@context.SUsernumber</MudTd>
+                            <MudTd>@context.SCid</MudTd>
+                            <MudTd>@context.SLac</MudTd>
+                            <MudTd>@context.SBasestation</MudTd>
+                            <MudTd>@context.SBelong</MudTd>
+                            <MudTd>@context.SSourcename</MudTd>
+                        </RowTemplate>
+
+                        <PagerContent>
+
+                            <MudPaper Style="min-height: 274px; width: 100%; position:sticky; bottom:0; left:0; align-self: flex-start;">
+                                <MudDivider />
+                                @if (ListDataRecords != null && audioDataLeft != null && recordType != null)
+                                {
+                                    <WaveFormPlayer AutoPlay="false" FileName="@fileNameForSaveAudioViaPlayer" ColorTag="@colorTag" RecordType="@recordType" AudioDataLeft="@audioDataLeft" AudioDataRight="@audioDataRight" />
+                                }
+                                else 
+                                {
+                                    <WaveFormPlayerSkeleton />
+                                }
+                                <MudDivider />
+                                <MudText Style="display: block!important ;overflow-y:scroll; height: 100px; word-wrap: break-word; white-space: pre-wrap;" Typo="Typo.caption">@commentString.Trim().Replace(" \n\n", "\n")</MudText>
+
+                            </MudPaper>
+                            @if (ListDataRecords != null)
+                            {
+                                <MudTablePager Style="display:none;" PageSizeOptions="new int[]{ListDataRecords.Count}" RowsPerPageString="Записей на страницу:" />
+                            }
+                        </PagerContent>
+                    </MudTable>
+                }
+            }
+        }
+    </div>
+</MudContainer>
+
+
+@code
+{
+
+    /*
+    [Parameter]
+    public MudBlazor.Color colorTag { get; set; }
+    [Parameter]
+    public SettingsDb SettingsDb { get; set; } = null;
+    [Parameter]
+    public List<SprSpeechTable> ListDataRecords { get; set; } = null;
+    */
+
+    private int totalItems;
+
+    private SprSpeechTable selectedItem1 = null;
+    string commentString = "";
+    byte[]? audioDataLeft;
+    byte[]? audioDataRight;
+    string? recordType;
+
+    long? currentSInckey;
+
+    string fileNameForSaveAudioViaPlayer = "";//$"" + ItemByKey.Datetime.ToString() + "_" + durationString + "_" + ItemByKey.Sourcename + "_" + ItemByKey.Usernumber + "_" + ItemByKey.Talker + "_" + ItemByKey.Lac + "_" + ItemByKey.Cid + "_" + ItemByKey.Basestation + ".wav";
+
+    private int selectedRowNumber = -1;
+    private MudTable<SprSpeechTable> mudTable;
+
+    private void OnStartDateTimeChanged(DateTime newValue)
+    {
+        StartDateTime = newValue;
+        OnPostWorksPlayerClosed();
+    }
+    private void OnEndDateTimeChanged(DateTime newValue)
+    {
+        EndDateTime = newValue;
+        OnPostWorksPlayerClosed();
+    }
+    private void OnDurationChanged(int newValue)
+    {
+        Duration = newValue;
+        OnPostWorksPlayerClosed();
+    }
+    private void OnPrelookedChanged(bool newValue)
+    {
+        Prelooked = newValue;
+        OnPostWorksPlayerClosed();
+    }
+
+    private async Task HandleRightClick()
+    {
+        //selectedItem1?.SInckey
+        long? SInckey = selectedItem1?.SInckey;
+        await NavigateToNextItem();
+
+        string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+        using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+        {
+            await EFCoreQuery.SetPrelookedById(SInckey, context);
+        }
+        // Refresh the local state
+        var updatedItem = ListDataRecords.FirstOrDefault(item => item.SInckey == SInckey);
+        if (updatedItem != null)
+        {
+            updatedItem.SPrelooked = 1; // Update the local state
+        }
+        StateHasChanged();
+    }
+
+    private string SelectedRowClassFunc(SprSpeechTable element, int rowNumber)
+    {
+        if (mudTable.SelectedItem != null && mudTable.SelectedItem.Equals(element))
+        {
+            selectedRowNumber = rowNumber;
+            return "selected";
+        }
+        else if (element.SPrelooked == 1)
+        {
+            return "prelooked";
+        }
+        else
+        {
+            return string.Empty;
+        }
+    }
+
+    private async Task<TableData<SprSpeechTable>> ServerReload(TableState state, CancellationToken token)
+    {
+        await GetDataRecords(); //reload ListDataRecords
+        await Task.Delay(300, token);
+
+        totalItems = ListDataRecords.Count();
+        switch (state.SortLabel)
+        {
+            case "SInckey":
+                ListDataRecords = ListDataRecords.OrderByDirection(state.SortDirection, o => o.SInckey).ToList();
+                break;
+            case "SDatetime":
+                ListDataRecords = ListDataRecords.OrderByDirection(state.SortDirection, o => o.SDatetime).ToList();
+                break;
+            case "SDuration":
+                ListDataRecords = ListDataRecords.OrderByDirection(state.SortDirection, o => o.SDuration).ToList();
+                break;
+            case "SNotice":
+                ListDataRecords = ListDataRecords.OrderByDirection(state.SortDirection, o => o.SNotice).ToList();
+                break;
+        }
+
+        //pagedData = data.Skip(state.Page * state.PageSize).Take(state.PageSize).ToArray();
+        return new TableData<SprSpeechTable>() { TotalItems = totalItems, Items = ListDataRecords };
+    }
+
+    async Task OnRowClick(TableRowClickEventArgs<SprSpeechTable> args)
+    {
+        audioDataLeft = null;
+        audioDataRight = null;
+        recordType = null;
+
+        long? SInckey = args.Item.SInckey;
+        selectedItem1 = args.Item;
+        currentSInckey = SInckey;
+        string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+        using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+        {
+            (audioDataLeft, audioDataRight, recordType) = await EFCoreQuery.GetAudioDataAsync(SInckey, context);
+            fileNameForSaveAudioViaPlayer = $"" + args.Item.SDatetime.ToString() + "_" + args.Item.SDuration + "_" + args.Item.SSourcename + "_" + args.Item.SUsernumber + "_" + args.Item.STalker + "_" + args.Item.SLac + "_" + args.Item.SCid + "_" + args.Item.SBasestation + ".wav";
+            commentString = await EFCoreQuery.GetCommentDataAsync(SInckey, context);
+        }
+
+        Console.WriteLine($"{args.Item.SInckey} ");
+        StateHasChanged();
+    }
+
+    private async Task NavigateToPreviousItem()
+    {
+        if (ListDataRecords != null && selectedItem1 != null)
+        {
+            int currentIndex = ListDataRecords.IndexOf(selectedItem1);
+            if (currentIndex > 0)
+            {
+                SprSpeechTable previousItem = ListDataRecords[currentIndex - 1];
+                await OnRowClick(new TableRowClickEventArgs<SprSpeechTable>(new MouseEventArgs(), null, previousItem));
+            }
+        }
+    }
+
+    private async Task NavigateToNextItem()
+    {
+        if (ListDataRecords != null && selectedItem1 != null)
+        {
+            // Останавливаем текущее аудио через JavaScript
+            //await JSRuntime.InvokeVoidAsync("stopAudio");
+
+            // Очищаем данные текущего аудио
+            /*
+            audioDataLeft = null;
+            audioDataRight = null;
+            recordType = null;
+            fileNameForSaveAudioViaPlayer = "";
+
+            // Вызываем сборщик мусора для освобождения памяти
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            */
+
+            int currentIndex = ListDataRecords.IndexOf(selectedItem1);
+            if (currentIndex < ListDataRecords.Count - 1)
+            {
+                SprSpeechTable nextItem = ListDataRecords[currentIndex + 1];
+                await OnRowClick(new TableRowClickEventArgs<SprSpeechTable>(new MouseEventArgs(), null, nextItem));
+            }
+
+            //await JSRuntime.InvokeVoidAsync("playAudio");
+        }
+    }
+
+}
+
+
+
+@code {
+    [Inject]
+    public IConfiguration conf { get; set; }
+
+    public MudBlazor.Color colorTag = Color.Tertiary;
+
+    private List<SettingsDb> SettingsDbList = null;
+    private SettingsDb SettingsDb = null;
+    private string FileSettingsDb = Path.Combine(AppContext.BaseDirectory, "settingsPostworks.json");
+    private string CountRecordsMessage = "";
+    private bool IsCountRecordsProgress = false;
+    private bool IsVisiblePostWorksPlayer = false;
+
+    DateTime StartDateTime = DateTime.Now.AddDays(-10);
+    DateTime EndDateTime = DateTime.Now;
+    int Duration = 10;
+    bool Prelooked = true;
+
+    List<long?> SInckeyRecords = null;
+    List<string> IgnoreRecordTypes = null;
+
+    List<SprSpeechTable> ListDataRecords = null;
+
+    SprSpData1Table SprSpData1Table = null;
+
+    SprSpeechTable currentItem = null;
+
+    private List<string> clickedEvents = new();
+
+    bool ExpandedWindow = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        // dotnet add package System.Text.Encoding.CodePages // Регистрация провайдера кодировок
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        StateHasChanged();
+        IgnoreRecordTypes = conf.GetSection("AudioConverter:IgnoreRecordTypes").Get<List<string>>();
+    }
+
+    private async Task OnSettingsChanged()
+    {
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        Console.WriteLine("Настройки подключения к БД для репликатора изменились");
+    }
+
+    private void OnPostWorksPlayerClosed()
+    {
+        ExpandedWindow = false;
+        IsVisiblePostWorksPlayer = false;
+        ListDataRecords = null;
+        CountRecordsMessage = "";
+        StateHasChanged();
+    }
+
+    private async Task GetCountRecords()
+    {
+        SInckeyRecords = null;
+        ListDataRecords = null;
+        CountRecordsMessage = "";
+
+        try
+        {
+            IsCountRecordsProgress = true;
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+            {
+                SInckeyRecords = await EFCoreQuery.GetSInckeyRecordsPostworks(StartDateTime, EndDateTime, Duration, Prelooked, IgnoreRecordTypes, context);
+                await context.Database.CloseConnectionAsync();
+                CountRecordsMessage = $"записей: {SInckeyRecords.Count}";
+            }
+        }
+        catch (Exception ex)
+        {
+            CountRecordsMessage = $"Ошибка: {ex.Message}";
+            Console.WriteLine($"Ошибка: {ex.Message}");
+        }
+        finally
+        {
+            IsCountRecordsProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GetDataRecords()
+    {
+        ListDataRecords = null;
+        IsCountRecordsProgress = true;
+        try
+        {
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+            {
+                ListDataRecords = await EFCoreQuery.GetSpeechRecordsById(SInckeyRecords, context);
+                await context.Database.CloseConnectionAsync();
+            }
+            IsVisiblePostWorksPlayer = true;
+            await OnRowClick(new TableRowClickEventArgs<SprSpeechTable>(new MouseEventArgs(), null, ListDataRecords.FirstOrDefault()));
+        }
+        catch (Exception ex)
+        {
+            CountRecordsMessage = $"Ошибка: {ex.Message}";
+            IsVisiblePostWorksPlayer = false;
+        }
+        finally
+        {
+            IsCountRecordsProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ExpandToFullScreen() 
+    {
+        ExpandedWindow = !ExpandedWindow;
+    }
+
+    private async Task LoadSettings()
+    {
+        await Task.Delay(1);
+    }
+}

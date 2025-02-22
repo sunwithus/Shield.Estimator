@@ -1,0 +1,131 @@
+﻿@* ResetNotes.razor *@
+
+@page "/reset-notes"
+@rendermode InteractiveServer
+
+@using Shield.Estimator.Shared.Components.Modules._Shared
+@using Shield.Estimator.Shared.Components.Modules.AiEstimateDb
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
+
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+
+@inject IDbContextFactory DbContextFactory
+
+
+<PageTitle>🔄 Reset Notes </PageTitle>
+
+<MudContainer>
+    <MudText Typo="Typo.h5" Style="display:flex; justify-content:space-between;">Очистить поле Примечание => null</MudText>
+    <MudDivider />
+    <br />
+
+    @if (SettingsDbList != null)
+    {
+        <ConnectionSettings colorButton="@colorTag" OnSettingsChanged="OnSettingsChanged" SettingsDbList="@SettingsDbList" FileSettingsDb="@FileSettingsDb" />
+    }
+
+    <MudText Typo="Typo.body1">Сторонние Базы данных могут иметь заполненное поле "Примечание"</MudText>
+    <MudText Typo="Typo.body2"> - если в "Примечании" записи не пусто, обработчик БД пропустит запись</MudText>
+    <MudText Typo="Typo.body2"> - для записи значения null в "Примечание" выберите период и нажмите "Выполнить"</MudText>
+
+    <MudDivider />
+    <br />
+
+    <MudText Style="display: flex; justify-content:space-between; align-items:start; padding-bottom: 7px;">
+        <MudText>
+            @* // Период, Длительность *@
+            <MudGrid Spacing="8" Justify="Justify.FlexStart">
+                <MudItem>
+                    <MudTextField T="DateTime" Format="s" Label="От даты:" InputType="InputType.DateTimeLocal" @bind-Value="@StartDateTime" />
+                </MudItem>
+                <MudItem>
+                    <MudTextField T="DateTime" Format="yyyy-MM-ddTHH:mm:ss" Label="По дату:" InputType="InputType.DateTimeLocal" @bind-Value="@EndDateTime" />
+                </MudItem>
+                <MudItem>
+                    <MudTextField T="String" Label="Имя источника:" @bind-Value="@SourceName" />
+                </MudItem>
+            </MudGrid>
+        </MudText>
+
+    </MudText>
+    @if (IsProgress)
+    {
+        <MudButton Variant="Variant.Outlined" Disabled="true">Выполнение &emsp;<MudProgressCircular Color="@colorTag" Size="Size.Small" Indeterminate="true" /></MudButton>
+    }
+    else
+    {
+        <MudButton Variant="Variant.Outlined" OnClick="ResetNotices">Выполнить</MudButton>
+        <pre>@message</pre>
+    }
+
+</MudContainer>
+
+<br />
+<br />
+
+<style>
+    .bg-custom-class {
+    backdrop-filter: blur(10px);
+    }
+</style>
+
+
+@code {
+
+    public MudBlazor.Color colorTag = Color.Default;
+    private List<SettingsDb> SettingsDbList = null;
+    private SettingsDb SettingsDb = null;
+    private string FileSettingsDb = Path.Combine(AppContext.BaseDirectory, "settingsResetNotices.json");
+    private string message = "";
+    private bool IsProgress = false;
+
+    DateTime StartDateTime = DateTime.Now.AddMonths(-1);
+    DateTime EndDateTime = DateTime.Now;
+    string SourceName = "";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        StateHasChanged();
+    }
+
+    private async Task OnSettingsChanged()
+    {
+        SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
+        SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
+        Console.WriteLine("Настройки подключения к БД для репликатора изменились");
+    }
+
+    private async Task ResetNotices()
+    {
+        try
+        {
+            IsProgress = true;
+            message = "";
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+            {
+                List<long?> SInckeyRecords = await EFCoreQuery.GetSInckeyRecordsForNoticeNull(StartDateTime, EndDateTime, SourceName, context);
+                await EFCoreQuery.UpdateManyNoticeValuesAsync(SInckeyRecords, context, null);
+                await context.Database.CloseConnectionAsync();
+                message = $"Обнулено примечаний в записях: {SInckeyRecords.Count}";
+            }
+            IsProgress = false;
+        }
+        catch(Exception ex)
+        {
+            message = $"Ошибка: {ex.Message}";
+            IsProgress = false;
+        }
+    }
+
+    
+    private async Task LoadSettings()
+    {
+        await Task.Delay(1);
+    }
+}

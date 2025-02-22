@@ -1,0 +1,203 @@
+﻿@* PostWorksPlayer.razor *@
+@rendermode InteractiveServer
+
+@using Shield.Estimator.Shared.Components.Modules._Shared
+@using Shield.Estimator.Shared.Components.Modules.AiEstimateDb
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore
+@using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
+
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@using System.Text
+
+@inject IDbContextFactory DbContextFactory
+
+<style>
+    .mud-table-row td {
+    font-size: 11px;
+    }
+
+    .prelooked {
+        background-color: #cee !important;
+    }
+
+    .selected {
+    background-color: #1E88E5 !important;
+    }
+
+    .selected > td {
+    color: white !important;
+    }
+
+    .selected > td .mud-input {
+    color: white !important;
+    }
+</style>
+
+
+@if (ListDataRecords != null)
+{
+    <MudTable T="SprSpeechTable" Items="@ListDataRecords" Dense="true" 
+    Hover="true" FixedHeader="false" FixedFooter="true"
+    RowClass="cursor-pointer" OnRowClick="@OnRowClick"
+    RowClassFunc="@SelectedRowClassFunc" @ref="mudTable"
+    Height="100%" Style="overflow:hidden;"
+    Breakpoint="Breakpoint.Sm">
+
+        <ColGroup>
+            <col style="width:30px;" />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+        </ColGroup>
+    
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<SprSpeechTable, object>(x=>x.SInckey)">Ключ</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<SprSpeechTable, object>(x=>x.SDatetime)">Дата/время</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<SprSpeechTable, object>(x=>x.SDuration)">Длительность</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<SprSpeechTable, object>(x=>x.SNotice)">Примечание</MudTableSortLabel></MudTh>
+            <MudTh>Собеседник</MudTh>
+            <MudTh>Польз. номер</MudTh>
+            <MudTh>CID</MudTh>
+            <MudTh>LAC</MudTh>
+            <MudTh>БС</MudTh>
+            <MudTh>Язык</MudTh>
+            <MudTh>Источник</MudTh>
+        </HeaderContent>
+        <RowTemplate >
+            <MudTd Class="@(context.SPrelooked == 1 ? "prelooked" : "")" Style="width:50px !important;">@context.SInckey</MudTd>
+            <MudTd>@context.SDatetime</MudTd>
+            <MudTd>@context.SDuration</MudTd>
+            <MudTd>@context.SNotice</MudTd>
+            <MudTd>@context.STalker</MudTd>
+            <MudTd>@context.SUsernumber</MudTd>
+            <MudTd>@context.SCid</MudTd>
+            <MudTd>@context.SLac</MudTd>
+            <MudTd>@context.SBasestation</MudTd>
+            <MudTd>@context.SBelong</MudTd>
+            <MudTd>@context.SSourcename</MudTd>
+        </RowTemplate>
+        
+        <PagerContent>
+            <MudText Style="min-height: 274px; width: 100%; position:sticky; bottom:0; left:0; background-color:#f7f7f7;">
+                <MudDivider />
+                @if (audioDataLeft != null && recordType != null)
+                {
+                    <WaveFormPlayer FileName="@fileNameForSaveAudioViaPlayer" ColorTag="@colorTag" RecordType="@recordType" AudioDataLeft="@audioDataLeft" AudioDataRight="@audioDataRight" />
+                }
+                else
+                {
+                    <WaveFormPlayerSkeleton />
+                }
+                <MudDivider />
+                <MudText Style="background-color:#eee; overflow:auto; height: 100px;" Typo="Typo.body2">@commentString.Trim().Replace(" \n\n", "\n")</MudText>
+            </MudText>
+            @**@<MudTablePager Style="display:none;" PageSizeOptions="new int[]{ListDataRecords.Count, 10}" RowsPerPageString="Записей на страницу:" />
+        </PagerContent>
+        
+    </MudTable>
+}
+
+
+@code
+{
+    [Parameter]
+    public MudBlazor.Color colorTag { get; set; }
+    [Parameter]
+    public SettingsDb SettingsDb { get; set; } = null;
+    [Parameter]
+    public List<SprSpeechTable> ListDataRecords { get; set; } = null;
+
+    string commentString = "";
+    byte[]? audioDataLeft;
+    byte[]? audioDataRight;
+    string? recordType;
+
+    long? currentSInckey;
+
+    string fileNameForSaveAudioViaPlayer = "";//$"" + ItemByKey.Datetime.ToString() + "_" + durationString + "_" + ItemByKey.Sourcename + "_" + ItemByKey.Usernumber + "_" + ItemByKey.Talker + "_" + ItemByKey.Lac + "_" + ItemByKey.Cid + "_" + ItemByKey.Basestation + ".wav";
+
+    private int selectedRowNumber = -1;
+    private MudTable<SprSpeechTable> mudTable;
+
+    private string SelectedRowClassFunc(SprSpeechTable element, int rowNumber)
+    {
+        if (mudTable.SelectedItem != null && mudTable.SelectedItem.Equals(element))
+        {
+            selectedRowNumber = rowNumber;
+            return "selected";
+        }
+        else
+        {
+            return string.Empty;
+        }
+    }
+
+    async Task OnRowClick(TableRowClickEventArgs<SprSpeechTable> args)
+    {
+        audioDataLeft = null;
+        audioDataRight = null;
+        recordType = null;
+        long? SInckey = args.Item.SInckey;
+        currentSInckey = SInckey;
+        string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+        using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+        {
+            (audioDataLeft, audioDataRight, recordType) = await EFCoreQuery.GetAudioDataAsync(SInckey, context);
+            fileNameForSaveAudioViaPlayer = $"" + args.Item.SDatetime.ToString() + "_" + args.Item.SDuration + "_" + args.Item.SSourcename + "_" + args.Item.SUsernumber + "_" + args.Item.STalker + "_" + args.Item.SLac + "_" + args.Item.SCid + "_" + args.Item.SBasestation + ".wav";
+            commentString = await EFCoreQuery.GetCommentDataAsync(SInckey, context);
+        }
+
+        Console.WriteLine($"{args.Item.SInckey} ");
+        StateHasChanged();
+    }
+
+    public async Task HandleRightClick(MouseEventArgs e)
+            {
+
+            Console.WriteLine("Right mouse button clicked");
+
+            string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
+            //long? nextSInckey = ListDataRecords?.SkipWhile(r => r.SInckey != item.SInckey).Skip(1)?.FirstOrDefault()?.SInckey;
+            long? nextSInckey = ListDataRecords?.Skip(1)?.FirstOrDefault()?.SInckey;
+
+            Console.WriteLine("currentSInckey => " + currentSInckey);
+            Console.WriteLine("nextSInckey => " + nextSInckey);
+
+            audioDataLeft = null;
+            audioDataRight = null;
+            recordType = null;
+
+            using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
+                {
+                // Mark the record as viewed
+                var record = await context.SprSpeechTables.FindAsync(currentSInckey);
+                Console.WriteLine("record.SInckey => " + record?.SInckey);
+                if (record != null)
+                    {
+                    record.SPrelooked = 1;
+                    await context.SaveChangesAsync();
+                }
+                // Get the next record key
+                if (nextSInckey != null)
+                    {
+                    (audioDataLeft, audioDataRight, recordType) = await EFCoreQuery.GetAudioDataAsync(nextSInckey, context);
+                    //fileNameForSaveAudioViaPlayer = $"" + args.Item.SDatetime.ToString() + "_" + args.Item.SDuration + "_" + args.Item.SSourcename + "_" + args.Item.SUsernumber + "_" + args.Item.STalker + "_" + args.Item.SLac + "_" + args.Item.SCid + "_" + args.Item.SBasestation + ".wav";
+                    commentString = "Комментарий (в этой версии кода метода нет).";
+                }
+                await context.Database.CloseConnectionAsync();
+            }
+
+            // Update the UI
+            StateHasChanged();
+
+    }
+
+}
