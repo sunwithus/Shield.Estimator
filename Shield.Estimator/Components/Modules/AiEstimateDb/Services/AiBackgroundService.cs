@@ -21,7 +21,7 @@ public class AiBackgroundService : BackgroundService
 {
     private readonly ILogger<AiBackgroundService> _logger;
     private readonly IConfiguration _configuration;
-    private readonly WhisperService _whisper;
+    private readonly WhisperDockerService _whisper;
     private readonly KoboldService _kobold;
     private readonly IHubContext<TodoHub> _hubContext;
 
@@ -34,7 +34,7 @@ public class AiBackgroundService : BackgroundService
 
     private string _preTextTranslate;
 
-    public AiBackgroundService(ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperService whisperService, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext)
+    public AiBackgroundService(ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperDockerService whisperService, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext)
     {
         _logger = logger;
         _configuration = configuration;

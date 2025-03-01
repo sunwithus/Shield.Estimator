@@ -40,7 +40,7 @@
         <!-- File Upload -->
         <MudText Typo="Typo.body2" Style="display: flex; align-items: center">
 
-                <MudFileUpload T="IReadOnlyList<IBrowserFile>" FilesChanged="UploadFiles" Multiple="true" Disabled="@TranslateSingleton.TranslateInstance.IsTranscribing">
+            <MudFileUpload T="IReadOnlyList<IBrowserFile>" MaximumFileCount="300" Accept=".doc, .docx, .pdf, .html" FilesChanged="UploadFiles" Disabled="@TranslateSingleton.TranslateInstance.IsTranscribing">
                     <ActivatorContent>
                         
                         <MudButton Variant="Variant.Filled" Color="@Color" Style="height: 35px; width: 182px;"

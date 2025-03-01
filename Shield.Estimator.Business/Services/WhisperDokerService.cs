@@ -7,19 +7,18 @@ using AutoMapper;
 using Shield.Estimator.Business.Exceptions;
 using Shield.Estimator.Business.Options.WhisperOptions;
 using System.Net.Http.Headers;
-//using Shield.Estimator.Business.Models.WhisperDto;
 
 using Microsoft.Extensions.Configuration;
 using Shield.Estimator.Business.Options;
 using Shield.Estimator.Business.Options.KoboldOptions;
 
 namespace Shield.Estimator.Business.Services;
-public class WhisperService
+public class WhisperDockerService
 {
     private readonly HttpClient _httpClient;
-    private readonly IOptions<WhisperOptions> _options;
+    private readonly IOptions<WhisperDockerOptions> _options;
 
-    public WhisperService(HttpClient httpClient, IOptions<WhisperOptions> options)
+    public WhisperDockerService(HttpClient httpClient, IOptions<WhisperDockerOptions> options)
     {
         _httpClient = httpClient;
         _options = options;

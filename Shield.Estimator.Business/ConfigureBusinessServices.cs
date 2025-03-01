@@ -6,6 +6,7 @@ using Shield.Estimator.Business.Options.KoboldOptions;
 using Shield.Estimator.Business.Options.WhisperOptions;
 using Shield.Estimator.Business.Services;
 using Shield.Estimator.Business.Mappers;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Shield.Estimator.Business;
 
@@ -15,10 +16,12 @@ public static class BusinessServiceExtensions
     {
         // Регистрация настроек
         services.Configure<AiOptions>(configuration.GetSection("Ai"));
-        services.Configure<WhisperOptions>(configuration.GetSection("Whisper"));
+        services.Configure<WhisperDockerOptions>(configuration.GetSection("WhisperDocker"));
+        services.Configure<WhisperNetOptions>(configuration.GetSection("WhisperNet"));
 
-        // Регистрация HTTP-клиентов
-        services.AddHttpClient<WhisperService>(client =>
+        services.AddTransient<WhisperNetService>();
+
+        services.AddHttpClient<WhisperDockerService>(client =>
         {
             client.Timeout = TimeSpan.FromMinutes(15);
         });
