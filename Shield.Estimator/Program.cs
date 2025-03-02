@@ -37,6 +37,9 @@ builder.Services.AddHttpClient();
 
 SelectDb.Configure(builder.Configuration); //for static Toolkit.cs
 
+if(!Directory.Exists(@"C:\temp"))
+    Directory.CreateDirectory(@"C:\temp");
+
 var app = builder.Build();
 
 app.UseRouting();

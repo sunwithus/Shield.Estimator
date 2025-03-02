@@ -17,9 +17,9 @@ public class FFMpegFileToByteArray
     private static IConfiguration _configuration;
     private IAsyncPolicy<HttpResponseMessage> _retryPolicy;
 
-    public FFMpegFileToByteArray(string ffmpegPath = "")
+    public FFMpegFileToByteArray(string ffmpegPath = null)
     {
-        if (ffmpegPath == "")
+        if (ffmpegPath == null)
         {
             ffmpegPath = _configuration["PathToFFmpegExe"];
         }
@@ -97,7 +97,7 @@ public class FFMpegFileToByteArray
         return ms.ToArray();
     }
 
-    public async Task<MemoryStream> ProcessAudioToSingle16000StreamAsync(string inputFileName)
+    public async Task<MemoryStream> FileToSingle16000StreamAsync(string inputFileName)
     {
         var (duration, channels) = await RetryAsync(() => AnalyzeAudioAsync(inputFileName));
 

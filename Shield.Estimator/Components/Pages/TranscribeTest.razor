@@ -1,9 +1,10 @@
 ﻿@* Transcribe.razor *@
 
 @page "/transcribe-test"
-@    using Shield.Estimator.Shared.Components.Modules._Shared
-@    using Shield.Estimator.Business.Services
-@    using Shield.Estimator.Business.AudioConverterServices
+@using Shield.Estimator.Shared.Components.Modules._Shared
+@using Shield.Estimator.Business.Services
+@using Shield.Estimator.Business.AudioConverterServices
+@using Shield.Estimator.Business.AudioConverterServices.FFMpeg
 @inject IConfiguration conf
 @inject WhisperNetService WhisperNetService
 
@@ -96,13 +97,12 @@
     int durationOfWav;
     bool isTranscribed = false;
 
-    AudioFileToByteArrayConverter audioToDbConverter = null;
+    FFMpegFileToByteArray audioToDbConverter = null;
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
         audioToDbConverter = new(conf["PathToFFmpegExe"]);
-        //audioToDbConverter.Configure(conf["PathToFFmpegExe"]);
     }
 
     private async Task UploadFile(IBrowserFile file)
@@ -179,7 +179,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Ошибка в методе TranscribeAudio: " + ex.Message, ConsoleColor.Red);
+                Console.WriteLine("Ошибка в методе TranscribeAudio: " + ex.Message);
                 transcriptionResult = $"Error: {ex.Message}";
             }
             finally
