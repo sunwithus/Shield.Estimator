@@ -10,7 +10,9 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel
         public bool IsRunning { get; set; } = false;
         public bool IsRunPressed { get; set; } = false;
         public bool IsStopPressed { get; set; } = false;
+        public int CompletedLanguageDetect { get; set; } = 0;
         public int CompletedKeys { get; set; } = 0;
+        public int ProcessedWhisper { get; set; } = 0;
         public int TotalKeys { get; set; } = 0;
         public string? ProcessingMessage { get; set; } = "";
         public bool IsCyclic { get; set; } = true;
@@ -24,11 +26,20 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel
         public string? ServerAddress { get; set; } = "127.0.0.1";
         public string? Scheme { get; set; } = "";
         public string? LastError { get; set; } = "";
+        public string? Statistic { get; set; }
+
 
         public bool IsExecutionTime { get; set; } = false;
         public TimeSpan? StartExecutionTime { get; set; } = new TimeSpan(20, 00, 00);
         public TimeSpan? EndExecutionTime { get; set; } = new TimeSpan(08, 00, 00);
 
+        public void ResetCounters()
+        {
+            this.CompletedKeys = 0;
+            this.ProcessedWhisper = 0;
+            this.TotalKeys = 0;
+            this.Statistic = "";
+        }
     }
 
 }

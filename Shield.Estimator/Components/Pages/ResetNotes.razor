@@ -44,7 +44,7 @@
                     <MudTextField T="DateTime" Format="yyyy-MM-ddTHH:mm:ss" Label="По дату:" InputType="InputType.DateTimeLocal" @bind-Value="@EndDateTime" />
                 </MudItem>
                 <MudItem>
-                    <MudTextField T="String" Label="Имя источника:" @bind-Value="@SourceName" />
+                    <MudTextField T="String" Label="Имя источника:" @bind-Value="@SourceName" HelperText="<*> - для любых значений поля <Имя источника>" />
                 </MudItem>
             </MudGrid>
         </MudText>

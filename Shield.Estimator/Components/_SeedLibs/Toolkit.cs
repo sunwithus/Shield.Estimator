@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Text.Json;
 
 
-namespace Shield.Estimator.Shared.Components.Methods
+namespace Shield.Estimator.Shared.Components._SeedLibs
 {
 
     public class ConsoleCol
@@ -212,19 +212,23 @@ namespace Shield.Estimator.Shared.Components.Methods
 
         public static string ConStringDBA(SettingsDb SettingsDb)
         {
+            
             string conStringDBA = "";
-            if (SettingsDb.DbType == "Oracle")
+            if(SettingsDb != null)
             {
-                //Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={SettingsDb.ServerAddress})(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=sprutora)));User Id={SettingsDb.User};Password={SettingsDb.Password};Connection Timeout=120;
-                conStringDBA = $"User Id={SettingsDb.User};Password={SettingsDb.Password};Data Source={SettingsDb.ServerAddress}/{_configuration["OracleDbGlobalName"]};Connection Timeout=60;";
-            }
-            else if (SettingsDb.DbType == "Postgres")
-            {
-                conStringDBA = $"Host={SettingsDb.ServerAddress};Database={SettingsDb.Scheme};Username={SettingsDb.User};Password={SettingsDb.Password};";
-            }
-            else if (SettingsDb.DbType == "Interbase")
-            {
-                conStringDBA = $"data source={SettingsDb.ServerAddress};initial catalog={SettingsDb.Scheme};user id={SettingsDb.User};password={SettingsDb.Password};";
+                if (SettingsDb.DbType == "Oracle")
+                {
+                    //Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST={SettingsDb.ServerAddress})(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=sprutora)));User Id={SettingsDb.User};Password={SettingsDb.Password};Connection Timeout=120;
+                    conStringDBA = $"User Id={SettingsDb.User};Password={SettingsDb.Password};Data Source={SettingsDb.ServerAddress}/{_configuration["OracleDbGlobalName"]};Connection Timeout=60;";
+                }
+                else if (SettingsDb.DbType == "Postgres")
+                {
+                    conStringDBA = $"Host={SettingsDb.ServerAddress};Database={SettingsDb.Scheme};Username={SettingsDb.User};Password={SettingsDb.Password};";
+                }
+                else if (SettingsDb.DbType == "Interbase")
+                {
+                    conStringDBA = $"data source={SettingsDb.ServerAddress};initial catalog={SettingsDb.Scheme};user id={SettingsDb.User};password={SettingsDb.Password};";
+                }
             }
             return conStringDBA;
         }

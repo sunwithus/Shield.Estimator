@@ -326,7 +326,7 @@
         string conStringDBA = SelectDb.ConStringDBA(SettingsDb);
         using (var context = await DbContextFactory.CreateDbContext(SettingsDb.DbType, conStringDBA, SettingsDb.Scheme))
         {
-            (audioDataLeft, audioDataRight, recordType) = await EFCoreQuery.GetAudioDataAsync(SInckey, context);
+            (audioDataLeft, audioDataRight, recordType, _) = await EFCoreQuery.GetAudioDataAsync(SInckey, context);
             fileNameForSaveAudioViaPlayer = $"" + args.Item.SDatetime.ToString() + "_" + args.Item.SDuration + "_" + args.Item.SSourcename + "_" + args.Item.SUsernumber + "_" + args.Item.STalker + "_" + args.Item.SLac + "_" + args.Item.SCid + "_" + args.Item.SBasestation + ".wav";
             commentString = await EFCoreQuery.GetCommentDataAsync(SInckey, context);
         }

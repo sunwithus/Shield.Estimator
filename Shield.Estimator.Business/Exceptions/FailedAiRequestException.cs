@@ -8,7 +8,7 @@ namespace Shield.Estimator.Business.Exceptions
 {
     public class FailedAiRequestException : BusinessException
     {
-        public FailedAiRequestException(string message, Exception exception) 
+        public FailedAiRequestException(string message, Exception? exception = null)  
             : base(message, exception)
         {
         }

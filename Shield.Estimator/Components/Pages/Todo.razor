@@ -46,6 +46,7 @@
                                 <MudButton Disabled="false" Variant="Variant.Filled" Style="height:32px; width: 32px;" Color="@colorTag" OnClick="@(async () => await StopButtonPressed(todo))">◼</MudButton>
                             </MudText>
                             <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">@todo.Title.PadRight(25) &emsp;<b>→ @todo.Scheme</b></MudText>
+                            <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">todo.Statistic = @todo.Statistic</MudText>
                         </MudText>
                         <MudText Class="d-flex ml-auto" Color="@colorTag" Style="display: flex; justify-content: flex-end;">
                             <MudText Typo="Typo.body2">@todo.ProcessingMessage &emsp;</MudText>
@@ -193,6 +194,7 @@
                 existingTodo.StartExecutionTime = todo.StartExecutionTime;
                 existingTodo.EndExecutionTime = todo.EndExecutionTime;
                 existingTodo.LastError = todo.LastError;
+                existingTodo.Statistic = todo.Statistic;
                 //Todo подумать как по другому присваивать existingTodo=todo
                 //existingTodo = todo; //ссылочный тип
             }

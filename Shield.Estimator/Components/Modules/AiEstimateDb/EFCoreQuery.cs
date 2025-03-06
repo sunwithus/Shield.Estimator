@@ -33,7 +33,7 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
                .ToListAsync();
         }
 
-        public static async Task<(byte[]? audioDataLeft, byte[]? audioDataRight, string? recordType)> GetAudioDataAsync(long? key, BaseDbContext db)
+        public static async Task<(byte[]?, byte[]?, string?, string?)> GetAudioDataAsync(long? key, BaseDbContext db)
         {
             var results = await db.SprSpData1Tables.Where(x => x.SInckey == key).Select(x => new
             {
@@ -44,10 +44,14 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
 
             var result = results.FirstOrDefault();
 
-            if (result == null)
-                return (null, null, null);
+            var results2 = await db.SprSpeechTables.Where(x => x.SInckey == key).Select(x => new
+            {
+                Eventcode = x.SEventcode
+            }).ToListAsync();
 
-            return (result.AudioDataLeft, result.AudioDataRight, result.RecordType);
+            var result2 = results2.FirstOrDefault();
+
+            return (result?.AudioDataLeft, result?.AudioDataRight, result?.RecordType, result2?.Eventcode);
         }
 
         public static async Task<string> GetCommentDataAsync(long? key, BaseDbContext db)
@@ -57,12 +61,36 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
             return result != null ? Encoding.GetEncoding("windows-1251").GetString(result) : "Комментарий отсутствует.";
         }
 
+        public static async Task UpdateLangInfo(long? key, string detectedLanguage, string langCode, BaseDbContext db)
+        {
+            if (key == null)
+            {
+                return; // Если запись с таким ключом не найдена, завершаем метод
+            }
+            Console.WriteLine($"{key}");
+            SprSpeechTable speech = db.SprSpeechTables.Where(c => c.SInckey == key).ToList().FirstOrDefault();
+            speech.SBelong = detectedLanguage;
+            speech.SPostid = langCode;
+            Console.WriteLine($"langCode => {detectedLanguage}");
+            try
+            {
+                Console.WriteLine($"3");
+                db.Entry(speech).State = EntityState.Modified;
+                await db.SaveChangesAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Обработка исключений, например, если записи с таким ключом больше нет
+                throw new Exception($"Ошибка при обновлении данных UpdateLangInfo для ключа {key}: {ex.Message}");
+            }
+        }
+
         public static async Task InsertOrUpdateCommentAsync(
             long? key,
             string text,
             string detectedLanguage,
             string responseOllamaText,
-            string modelName,
+            string langCode,
             BaseDbContext db,
             int backLight)
         {
@@ -113,8 +141,8 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
                     {
                         SInckey = key,
                         SBelong = detectedLanguage,
+                        SPostid = langCode,
                         SNotice = dangerLevelString,
-                        SPostid = modelName,
                         SSelstatus = selStatus
                     };
                     await db.SprSpeechTables.AddAsync(speech);
@@ -123,7 +151,7 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
                 {
                     speech.SBelong = detectedLanguage;
                     speech.SNotice = dangerLevelString;
-                    speech.SPostid = modelName;
+                    speech.SPostid = langCode;
                     speech.SSelstatus = selStatus;
                     db.Entry(speech).State = EntityState.Modified;
                 }
@@ -165,6 +193,14 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
         }
         public static async Task<List<long?>> GetSInckeyRecordsForNoticeNull(DateTime StartDateTime, DateTime EndDateTime, string SourceName, BaseDbContext db)
         {
+            if (SourceName == "*")
+            {
+                return await db.SprSpeechTables
+                    .Where(x => x.SDatetime >= StartDateTime && x.SDatetime <= EndDateTime
+                    && (x.SNotice != null || x.SNotice != ""))
+                    .Select(x => x.SInckey)
+                    .ToListAsync();
+            }
             return await db.SprSpeechTables
                 .Where(x => x.SDatetime >= StartDateTime && x.SDatetime <= EndDateTime && x.SSourcename == SourceName
                 && (x.SNotice != null || x.SNotice != ""))

@@ -6,7 +6,7 @@
 @rendermode InteractiveServer
 
 <MudText Typo="Typo.body1" Style="display: flex;">
-    <MudSelect ValueChanged="@(value => OnOperatorSelectedChanged(value))" T="string" Label="Оператор:" Value="@operatorName" Clearable="true" Dense="true" Color=@colorButton Style="top:-7px;">
+    <MudSelect ValueChanged="@(value => OnOperatorSelectedChanged(value))" T="string" Label="Шаблон запроса:" Value="@operatorName" Clearable="true" Dense="true" Color=@colorButton Style="top:-7px;">
         @foreach (var oper in operators)
         {
             <MudSelectItem Value="@oper">@oper</MudSelectItem>

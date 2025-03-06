@@ -84,7 +84,7 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
         [Column("S_BASESTATION")] //код зоны базовой станции
         public string? SBasestation { get; set; }
 
-        [Column("S_POSTID")] //bмя поста регистрации
+        [Column("S_POSTID")] //имя поста регистрации //LanguageCode
         public string? SPostid { get; set; }
 
 

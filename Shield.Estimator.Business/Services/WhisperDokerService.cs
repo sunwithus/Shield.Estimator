@@ -7,25 +7,24 @@ using AutoMapper;
 using Shield.Estimator.Business.Exceptions;
 using Shield.Estimator.Business.Options.WhisperOptions;
 using System.Net.Http.Headers;
-//using Shield.Estimator.Business.Models.WhisperDto;
 
 using Microsoft.Extensions.Configuration;
 using Shield.Estimator.Business.Options;
 using Shield.Estimator.Business.Options.KoboldOptions;
 
 namespace Shield.Estimator.Business.Services;
-public class WhisperService
+public class WhisperDockerService
 {
     private readonly HttpClient _httpClient;
-    private readonly IOptions<WhisperOptions> _options;
+    private readonly IOptions<WhisperDockerOptions> _options;
 
-    public WhisperService(HttpClient httpClient, IOptions<WhisperOptions> options)
+    public WhisperDockerService(HttpClient httpClient, IOptions<WhisperDockerOptions> options)
     {
         _httpClient = httpClient;
         _options = options;
     }
 
-    public async Task<(string, string)> DetectLanguageAsync(string audioFilePath)
+    public async Task<(string, string, double)> DetectLanguageAsync(string audioFilePath)
     {
         try
         {
@@ -33,7 +32,9 @@ public class WhisperService
 
             var result = JsonDocument.Parse(jsonResponse);
             return (result.RootElement.GetProperty("language_code").GetString().ToLower(),
-                    result.RootElement.GetProperty("detected_language").GetString());
+                    result.RootElement.GetProperty("detected_language").GetString(),
+                    result.RootElement.GetProperty("confidence").GetDouble()
+                    );
         }
         catch (Exception ex)
         {
@@ -54,9 +55,7 @@ public class WhisperService
         }
     }
 
-    private async Task<string> 
-        
-        SendAudioRequestAsync(string audioFilePath, string requestUrl, string contentType = "audio/wav")
+    private async Task<string> SendAudioRequestAsync(string audioFilePath, string requestUrl, string contentType = "multipart/form-data") // multipart/form-data //audio/wav
     {
         DateTime startTime = DateTime.Now;
         Console.WriteLine(audioFilePath);
@@ -70,6 +69,14 @@ public class WhisperService
 
         var response = await _httpClient.PostAsync(requestUrl, form);
         response.EnsureSuccessStatusCode();
+
+        
+        Console.WriteLine(response.StatusCode);
+        Console.WriteLine("Response headers:");
+        foreach (var header in response.Headers)
+        {
+            Console.WriteLine($"{header.Key}: {string.Join(", ", header.Value)}");
+        }
 
         var responseText = await response.Content.ReadAsStringAsync();
 

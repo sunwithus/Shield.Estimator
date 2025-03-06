@@ -1,10 +1,15 @@
 ﻿@* Transcribe.razor *@
 
-@page "/transcribe-file"
+@page "/transcribe-test"
 @using Shield.Estimator.Shared.Components.Modules._Shared
+@using Shield.Estimator.Business.Services.WhisperNet
 @using Shield.Estimator.Business.Services
+@using Shield.Estimator.Business.Models.WhisperCppDto
+@using Shield.Estimator.Business.AudioConverterServices
+@using Shield.Estimator.Business.AudioConverterServices.FFMpeg
 @inject IConfiguration conf
-@inject WhisperDockerService WhisperService
+@inject WhisperNetService WhisperNetService
+@inject WhisperCppService WhisperCppService
 
 <PageTitle>🔊 Transcribe audio</PageTitle>
 
@@ -95,6 +100,14 @@
     int durationOfWav;
     bool isTranscribed = false;
 
+    FFMpegFileToByteArray audioToDbConverter = null;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        audioToDbConverter = new(conf["PathToFFmpegExe"]);
+    }
+
     private async Task UploadFile(IBrowserFile file)
     {
         isTranscribed = false;
@@ -137,17 +150,17 @@
             Console.WriteLine(" conf[PathToFFmpegExeForReplicator] = " + conf["PathToFFmpegExeForReplicator"]);
 
             await Task.Delay(10);
-
-            try 
-            {
-                (durationOfWav, audioDataLeft, audioDataRight) = await AudioToDbConverter.FFmpegStream(audioFilePath, conf["PathToFFmpegExeForReplicator"]);
+                /*
+                try 
+                {
+                (durationOfWav, audioDataLeft, audioDataRight) = await audioToDbConverter.ProcessAudioAsync(audioFilePath);
             }
-            catch (Exception ex)
-            {
+                catch (Exception ex)
+                {
                 transcriptionResult = ex.Message;
                 StateHasChanged();
-            }
-
+        }
+        */
         }
 
     }
@@ -161,13 +174,31 @@
                 isTranscribing = true;
                 transcriptionResult = "";
                 DateTime processingTime = DateTime.Now;
-                transcriptionResult = await WhisperService.TranscribeAsync(audioFilePath);
+
+
+
+                await WhisperCppService.LoadModelAsync(@"C:\dotnet\whisper.cpp.cpu\models\ggml-tiny-mongolian.bin");
+                Console.WriteLine("Новая модель загружена.");
+
+                var parameters = new InferenceRequestDto
+                    {
+                        Threads = 24,
+                        //Processors = 6,
+                        Temperature = 0.0,
+                        ResponseFormat = "text",
+                        Language = "auto"
+                    };
+                var result = await WhisperCppService.ProcessInferenceAsync(audioFilePath, parameters);
+
+                transcriptionResult = result;
+                //transcriptionResult = await WhisperNetService.TranscribeAudio(audioFilePath, "uz");
+               
                 //transcriptionResult = $"Время выполнения: {(DateTime.Now - processingTime).TotalSeconds} сек.\n {transcriptionResult}";
                 isTranscribed = true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Ошибка в методе TranscribeAudio: " + ex.Message, ConsoleColor.Red);
+                Console.WriteLine("Ошибка в методе TranscribeAudio: " + ex.Message);
                 transcriptionResult = $"Error: {ex.Message}";
             }
             finally

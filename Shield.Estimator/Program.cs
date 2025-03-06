@@ -1,5 +1,5 @@
 //Program.cs
-global using Shield.Estimator.Shared.Components.Methods;
+global using Shield.Estimator.Shared.Components._SeedLibs;
 
 using Shield.Estimator.Shared.Components;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel;
@@ -11,6 +11,7 @@ using MudBlazor.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContextFactory<SqliteDbContext>();
+//builder.Services.AddSingleton<SqliteDbContext>();
 
 //WhisperService, KoboldService
 builder.Services.AddBusinessServices(builder.Configuration);
@@ -36,6 +37,10 @@ builder.Services.AddRazorComponents()
 builder.Services.AddHttpClient();
 
 SelectDb.Configure(builder.Configuration); //for static Toolkit.cs
+/*
+if(!Directory.Exists(@"C:\temp"))
+    Directory.CreateDirectory(@"C:\temp");
+*/
 
 var app = builder.Build();
 
