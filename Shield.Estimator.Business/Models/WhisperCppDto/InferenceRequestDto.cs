@@ -2,12 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace Shield.Estimator.Business.Models.WhisperCppDto;
 
 public class InferenceRequestDto
 {
+    //[JsonPropertyName("threads")]
     public int? Threads { get; set; }
     public int? Processors { get; set; }
     public int? OffsetT { get; set; }

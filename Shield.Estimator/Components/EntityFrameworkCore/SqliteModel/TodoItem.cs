@@ -36,6 +36,7 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel
         public void ResetCounters()
         {
             this.CompletedKeys = 0;
+            this.CompletedLanguageDetect = 0;
             this.ProcessedWhisper = 0;
             this.TotalKeys = 0;
             this.Statistic = "";

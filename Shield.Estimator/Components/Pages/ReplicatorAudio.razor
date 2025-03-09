@@ -15,10 +15,7 @@
 @using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
 @using Shield.Estimator.Shared.Components.Modules.Replicator
 @using Shield.Estimator.Shared.Components.Modules._Shared
-
-@inject NavigationManager Navigation
-@inject IDialogService DialogService
-@inject ISnackbar SnackbarService
+@using Shield.Estimator.Business.Logger
 
 @inject IConfiguration _configuration
 @inject IDbContextFactory _dbContextFactory
@@ -29,12 +26,12 @@
     <MudText Typo="Typo.h5">Репликация аудио в Oracle / Postgres 🎧 => 📦</MudText>
     <MudDivider />
     <br />
-
+    @*
     <MudOverlay Visible="!ReplSingleton.ReplInstance.IsStoped" LightBackground="true" Absolute="true">
         <MudText>Процесс занят.</MudText>
         <MudText>Идёт выполнение, подождите... @ReplSingleton.ReplInstance.ProgressExec %</MudText>
     </MudOverlay>
-
+    *@
     @if (SettingsDbList != null)
     {
         <ConnectionSettings colorButton="@colorButton" OnSettingsChanged="OnSettingsChanged" SettingsDbList="@SettingsDbList" FileSettingsDb="@FileSettingsDb" />
@@ -49,7 +46,7 @@
 
     @if(!string.IsNullOrEmpty(operatorName))
     {
-        <LoadManyFilesFromFolder sourceName="@operatorName" SettingsDbList="@SettingsDbList" onlyAudioType="@true" colorButton="@colorButton" OnFinishLoading="HandleFilesLoaded" />
+        <LoadManyFilesFromFolder sourceName="@operatorName" SettingsDbList="@SettingsDbList" onlyAudioType="@true" colorButton="@colorButton" OnFinishLoading="HandleFilesLoaded" FolderToSaveTempAudio=@_configuration["AudioPathForReplicator"] />
     }
     else
     {
@@ -59,9 +56,10 @@
     @if(isFilesLoaded)
     {
         <br />
-        <MudButton OnClick="@(async () => await StartReplication())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Пуск!</MudButton>
+        <MudText Typo="Typo.body1" Color="@colorButton">Файлы загружены на сервер, запись в БД началась. Со страницы можно уходить.</MudText>
+        @*<MudButton OnClick="@(async () => await StartReplication())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Пуск!</MudButton>*@
     }
-
+@*
     @if (!string.IsNullOrEmpty(message))
     {
         <MudSimpleTable Dense="true" FixedHeader="true" Style="height:150px;">
@@ -84,14 +82,14 @@
     {
         <MudText Style="height:150px;" />
     }
-
+*@
 </MudContainer>
 
 
 @code {
     private string statusText = string.Empty;
     private string message = string.Empty;
-    FileLogger _logger = null;
+    LoggerToFile _logger;
 
     MudBlazor.Color colorButton = Color.Surface;
     private string operatorName = "";
@@ -108,9 +106,8 @@
         ReplSingleton.ReplInstance.ReplPropertyChanged += Singleton_PropertyChanged;
         StateHasChanged();
 
-        _logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
-
-
+        //_logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+        _logger = new LoggerToFile(@".\Logs\ReplicatorLog.txt");
     }
 
     private void DeleteCopiedFiles()
@@ -169,11 +166,11 @@
                     {
                         ConsoleCol.WriteLine($"{DateTime.Now} - Repl => Ошибка при обработке файла {filePath}: {ex.Message}", ConsoleColor.Red);
                         message = $"<div>❌ Ошибка при обработке файла {filePath}: {ex.Message}</div>" + message;
-                        _logger.Log($" Ошибка при обработке файла {filePath}: {ex.Message}");
+                        await _logger.AddLogMessage($" Ошибка при обработке файла {filePath}: {ex.Message}");
                     }
                 }
                 await context.Database.CloseConnectionAsync();
-                _logger.Log($"{SettingsDb.DbType} => {SettingsDb.Scheme}. Выполнено: {count}/{total}");
+                await _logger.AddLogMessage($"{SettingsDb.DbType} => {SettingsDb.Scheme}. Выполнено: {count}/{total}");
             }
         }
         catch (Exception ex)
@@ -194,6 +191,7 @@
         var (durationOfWav, audioDataLeft, audioDataRight) = await AudioToDbConverter.FFmpegStream(filePath, _configuration["PathToFFmpegExeForReplicator"]);
 
         Parse.ParsedIdenties fileData = Parse.FormFileName(filePath); //если не удалось, возвращает {DateTime.Now, "", "", "", 2}
+
         string isIdentificators = (fileData.Talker == "" && fileData.Caller == "" && fileData.IMEI == "") ? "✔️ без идентификаторов" : "✅ с идентификаторами";
         message = $"<div>{isIdentificators}. Успешно. => {filePath}</div>" + message;
 

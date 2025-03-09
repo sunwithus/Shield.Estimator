@@ -23,7 +23,8 @@ public static class BusinessServiceExtensions
     {
         // Регистрация настроек
         services.Configure<AiOptions>(configuration.GetSection("Ai"));
-        services.Configure<WhisperDockerOptions>(configuration.GetSection("WhisperDocker"));
+        services.Configure<WhisperFasterDockerOptions>(configuration.GetSection("WhisperFasterDocker"));
+        services.Configure<WhisperXDockerOptions>(configuration.GetSection("WhisperXDocker"));
         services.Configure<WhisperNetOptions>(configuration.GetSection("WhisperNet"));
         services.Configure<WhisperCppOptions>(configuration.GetSection("WhisperCpp"));
 
@@ -41,7 +42,12 @@ public static class BusinessServiceExtensions
             client.Timeout = TimeSpan.FromMinutes(15);
         });
 
-        services.AddHttpClient<WhisperDockerService>(client =>
+        services.AddHttpClient<WhisperFasterDockerService>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(15);
+        });
+
+        services.AddHttpClient<WhisperXDockerService>(client =>
         {
             client.Timeout = TimeSpan.FromMinutes(15);
         });

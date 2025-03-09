@@ -18,6 +18,7 @@ builder.Services.AddBusinessServices(builder.Configuration);
 
 //BackgroundService
 builder.Services.AddHostedService<AiBackgroundService>();
+builder.Services.AddHostedService<ReplBackgroundService>();
 
 builder.Services.AddSingleton<IDbContextFactory, DbContextFactory>();
 
@@ -44,6 +45,9 @@ if(!Directory.Exists(@"C:\temp"))
 
 var app = builder.Build();
 
+
+
+
 app.UseRouting();
 app.UseAntiforgery();
 app.MapHub<ReplicatorHub>("/replicatorhub");
@@ -68,3 +72,27 @@ app.MapRazorComponents<App>()
 
 //app.Run();
 app.Run("http://0.0.0.0:555");
+
+
+///////////////////////////////////////////////////////////
+// Создание директорий
+var config = app.Services.GetRequiredService<IConfiguration>();
+CreateDirectories(config);
+///////////////////////////////////////////////////////////
+void CreateDirectories(IConfiguration config)
+{
+    var directories = new[]
+    {
+    config["TempFilesDirectory"],
+    config["AudioPathForReplicator"],
+    config["TranslatedFilesFolder"]
+    };
+
+    foreach (var dir in directories)
+    {
+        if (!Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+    }
+}

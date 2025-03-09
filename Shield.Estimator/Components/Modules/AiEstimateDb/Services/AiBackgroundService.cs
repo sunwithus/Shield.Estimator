@@ -9,30 +9,21 @@ using Shield.Estimator.Shared.Components.Modules.AiEstimateDb;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora;
-using Npgsql;
-using Oracle.ManagedDataAccess.Client;
 using Shield.Estimator.Business.Services;
 using Shield.Estimator.Business.Services.WhisperNet;
+using Shield.Estimator.Business.Exceptions;
 
 using Polly;
 using Polly.Retry;
-using System.Threading;
-using System.Data;
-using DocumentFormat.OpenXml.Vml.Office;
 using Microsoft.Extensions.Options;
 using Shield.Estimator.Business.Options.WhisperOptions;
-using Microsoft.Extensions.Logging;
-using DocumentFormat.OpenXml.Drawing.Diagrams;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Shield.Estimator.Business.AudioConverterServices;
-using Npgsql.Internal;
-using Whisper.net.Wave;
-using Whisper.net;
-using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
+using MudBlazor;
+using System.Collections.Concurrent;
 
 public class AiBackgroundService : BackgroundService
 {
-    private const int ProcessingDelayMs = 15_011;
+    private const int ProcessingDelayMs = 8_005;
     private const double MinimumConfidence = 0.6;
     private const int MaxWhisperOllamaGap = 2;
     
@@ -48,7 +39,7 @@ public class AiBackgroundService : BackgroundService
 
     private readonly IConfiguration _configuration;
     private readonly IOptions<WhisperCppOptions> _options;
-    private readonly WhisperDockerService _whisperDocker;
+    private readonly WhisperFasterDockerService _whisperFasterDocker;
     private readonly WhisperNetService _whisperNet;
     private readonly WhisperCppService _whisperCpp;
     private readonly KoboldService _kobold;
@@ -58,11 +49,11 @@ public class AiBackgroundService : BackgroundService
     private string _preTextTranslate;
     private string _modelPathWhisperCpp;
 
-    public AiBackgroundService(ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperDockerService whisperService, WhisperNetService whisperNet, WhisperCppService whisperCpp, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext, IOptions<WhisperCppOptions> options, AudioConverterFactory audioConverterFactory)
+    public AiBackgroundService(ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperFasterDockerService whisperFasterService, WhisperNetService whisperNet, WhisperCppService whisperCpp, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext, IOptions<WhisperCppOptions> options, AudioConverterFactory audioConverterFactory)
     {
         _logger = logger;
         _configuration = configuration;
-        _whisperDocker = whisperService;
+        _whisperFasterDocker = whisperFasterService;
         _whisperNet = whisperNet;
         _whisperCpp = whisperCpp;
         _kobold = KoboldService;
@@ -133,7 +124,8 @@ public class AiBackgroundService : BackgroundService
 
             if (!isWithinExecutionTime)
             {
-                await UpdateTodoItemStateAsync(item, $"Запуск в {item.StartExecutionTime}... ⌛", CancellationToken.None);
+                item.ProcessingMessage = $"Запуск в {item.StartExecutionTime}... ⌛";
+                await UpdateTodoItemStateAsync(item, CancellationToken.None);
                 return false;
             }
         }
@@ -162,8 +154,18 @@ public class AiBackgroundService : BackgroundService
         }
         catch (Exception ex) 
         {
-            _logger.LogError(ex, "Error processing item {ItemId}", item.Id);
-            await UpdateTodoItemStateAsync(item, message: $"Error: {ex.Message}", ct);
+            _logger.LogError(ex, "Error processing item {0}", item.Title);
+            item.ProcessingMessage = $"Error: {ex.Message}";
+            item.LastError = $"{DateTime.Now}: {ex.Message}";
+            if (ex is Npgsql.PostgresException || ex is Npgsql.NpgsqlException || ex is Oracle.ManagedDataAccess.Client.OracleException)
+            {
+                item.IsRunning = false;
+                item.IsStopPressed = true;
+                item.IsRunPressed = false;
+                item.ProcessingMessage = $"Ошибка при обращении к БД.";
+            }
+            await UpdateTodoItemStateAsync(item, ct);
+            return;
         }
     }
     private (string conString, string dbType, string scheme) GetDbConnectionInfo(TodoItem item) =>
@@ -172,44 +174,78 @@ public class AiBackgroundService : BackgroundService
     private async Task InitializeItemCounters(TodoItem item, CancellationToken ct)
     {
         item.ResetCounters();
-        await UpdateTodoItemStateAsync(item, "Идёт выполнение... ⌛", ct);
+        item.ProcessingMessage = "Идёт выполнение... ⌛";
+        await UpdateTodoItemStateAsync(item, ct);
         await Task.Delay(1200, ct);
     }
     private async Task HandleNoResults(TodoItem item, CancellationToken ct)
     {
-        var message = item.IsCyclic
+        item.ProcessingMessage = item.IsCyclic
             ? $"Обработано 0/0. Ожидание повторного запуска."
             : "Нет данных для обработки. Завершено.";
 
-        await UpdateTodoItemStateAsync(item, message, ct);
+        await UpdateTodoItemStateAsync(item, ct);
     }
 
     private async Task ProcessAudioRecords(TodoItem item, List<SprSpeechTable> audioList, BaseDbContext context, CancellationToken ct)
     {
+        item.Statistic = "";
         item.TotalKeys = audioList.Count;
         item.IsRunning = true;
 
         var languageDetectionTask = Task.Run(async () =>
         {
+            var (conString, dbType, scheme) = GetDbConnectionInfo(item);
+            await using var localContext = await _dbContextFactory.CreateDbContext(dbType, conString, scheme);
+
+            // Словарь для подсчета количества языков по их коду
+            var languageCounts = new ConcurrentDictionary<string, int>();
+            // Словарь для хранения соответствия кодов и названий языков
+            var languageNames = new ConcurrentDictionary<string, string>();
             foreach (var entity in audioList)
             {
                 ct.ThrowIfCancellationRequested();
-                if (await ShouldStopProcessing(item))
-                {
-                    break;
-                }
-                Console.WriteLine("ProcessLanguageDetect");
-                await ProcessLanguageDetect(item, entity, context, ct);
-                item.CompletedLanguageDetect++;
-                item.Statistic = $"Автоопределение языков => {item.CompletedLanguageDetect}";
+                if (await ShouldStopProcessing(item)) break;
 
-                await UpdateTodoItemStateAsync(item, item.ProcessingMessage, ct);
+                Console.WriteLine("ProcessLanguageDetect");
+                Dictionary<string, string> lang = await ProcessLanguageDetect(item, entity, localContext, ct);
+                item.CompletedLanguageDetect++;
+                item.Statistic = $"Анализ языков: {item.CompletedLanguageDetect}/{item.TotalKeys}";
+
+                // Обновляем статистику
+                if (lang != null)
+                {
+                    foreach (var kvp in lang)
+                    {
+                        // Обновляем счетчик
+                        languageCounts.AddOrUpdate(kvp.Key, 1, (key, oldVal) => oldVal + 1);
+                        // Сохраняем актуальное название языка
+                        languageNames.AddOrUpdate(kvp.Key, kvp.Value, (key, oldVal) => kvp.Value);
+                    }
+                }
+
+                await UpdateTodoItemStateAsync(item, ct);
             }
-            await UpdateTodoItemStateAsync(item, $"{item.CompletedKeys}/{item.TotalKeys}", ct);
+
+            item.Statistic = $"{DateTime.Now}: {item.CompletedLanguageDetect}/{item.TotalKeys}";
+            await UpdateTodoItemStateAsync(item, ct);
+
+            // Выводим статистику
+            Console.WriteLine("\nСтатистика языков:");
+            foreach (var entry in languageCounts)
+            {
+                var languageCode = entry.Key;
+                var count = entry.Value;
+                var languageName = languageNames.TryGetValue(languageCode, out var name)
+                    ? name
+                    : "неизвестный язык";
+
+                Console.WriteLine($"- {languageName} ({languageCode}): {count} шт.");
+            }
 
         }, ct);
 
-        await Task.Delay(5000);
+        await Task.Delay(4000);
 
         var audioProcessingTask = Task.Run(async () =>
         {
@@ -226,22 +262,9 @@ public class AiBackgroundService : BackgroundService
 
         await Task.WhenAll(languageDetectionTask, audioProcessingTask);
 
-
         await FinalizeProcessing(item, ct);
     }
-
-    private async Task<(string languageCode, string detectedLanguage, double confidence)> DetectLanguageAsync(string audioFilePath)
-    {
-        (string languageCode, string detectedLanguage, double confidence) = await _whisperDocker.DetectLanguageAsync(audioFilePath);
-        if (confidence < MinimumConfidence)
-        {
-            languageCode = "undefined";
-        }
-        detectedLanguage = detectedLanguage + " " + Math.Round(confidence * 100, 1, MidpointRounding.AwayFromZero).ToString("N1") + "%";
-        return (languageCode, detectedLanguage, confidence);
-    }
-
-    private async Task ProcessLanguageDetect(TodoItem item, SprSpeechTable entity, BaseDbContext context, CancellationToken ct)
+    private async Task<Dictionary<string, string>> ProcessLanguageDetect(TodoItem item, SprSpeechTable entity, BaseDbContext context, CancellationToken ct)
     {
         string audioFilePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".wav");
         Console.WriteLine($"Путь к временному файлу: {audioFilePath}");
@@ -251,88 +274,57 @@ public class AiBackgroundService : BackgroundService
             string? recordType, eventCode = string.Empty;
             (audioDataLeft, audioDataRight, recordType, eventCode) = await EFCoreQuery.GetAudioDataAsync(entity.SInckey, context);
 
-            if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
+            if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return null;
 
             (string languageCode, string detectedLanguage, double confidence) = await DetectLanguageAsync(audioFilePath);
 
-            if(context == null) Console.WriteLine($"context");
+            if (context == null) Console.WriteLine($"context");
 
             await EFCoreQuery.UpdateLangInfo(entity.SInckey, detectedLanguage, languageCode, context);
             Console.WriteLine($"UpdateLangInfo");
+            return new Dictionary<string, string>() { { languageCode, detectedLanguage.Split(" ")[0] } };
         }
         finally
         {
             Files.DeleteFilesByPath(audioFilePath);
         }
-        
+    }
+
+    private async Task<(string languageCode, string detectedLanguage, double confidence)> DetectLanguageAsync(string audioFilePath)
+    {
+        (string languageCode, string detectedLanguage, double confidence) = await _whisperFasterDocker.DetectLanguageAsync(audioFilePath);
+        if (confidence < MinimumConfidence)
+        {
+            languageCode = "undefined";
+        }
+        detectedLanguage = detectedLanguage + " " + Math.Round(confidence * 100, 1, MidpointRounding.AwayFromZero).ToString("N1") + "%";
+        return (languageCode, detectedLanguage, confidence);
     }
 
     private async Task ProcessSingleAudioEntity(TodoItem item, SprSpeechTable entity, BaseDbContext context, CancellationToken ct)
     {
+        item.ProcessingMessage = $"Выполнение: {item.CompletedKeys}/{item.TotalKeys}";
+        await UpdateTodoItemStateAsync(item, ct);
+
         entity = await context.SprSpeechTables.FindAsync(entity.SInckey);
+        
         // Db => get audio (left, right, recordType, eventCode)
-        byte[]? audioDataLeft, audioDataRight;
-        string? recordType, eventCode = string.Empty;
-        (audioDataLeft, audioDataRight, recordType, eventCode) = await EFCoreQuery.GetAudioDataAsync(entity.SInckey, context);
+        var (audioDataLeft, audioDataRight, recordType, eventCode) = await EFCoreQuery.GetAudioDataAsync(entity.SInckey, context);
         Console.WriteLine($"Audio data (left, right, recordType, eventCode) for key {entity.SInckey} loaded. recordType = " + recordType);
 
-        // FFMpeg or Decoder => audio to folder
-        string audioFilePath = Path.Combine(_configuration["AudioPathForBGService"], $"{entity.SInckey}.wav");
+        // FFMpeg or Decoder => audio to folder + Whisper
+        string audioFilePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + $"{entity.SInckey}.wav"); //string audioFilePath = Path.Combine(_configuration["AudioPathForBGService"], $"{entity.SInckey}.wav");
         if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
-        await UpdateTodoItemStateAsync(item, $"Идёт выполнение: {item.CompletedKeys}/{item.TotalKeys}. Стадия: Whisper.", ct);
+        var (recognizedText, detectedLanguage, languageCode) = await ProcessWhisper(entity, audioFilePath, ct);
+        if(recognizedText == null) return;
 
-        // WHISPER
-        ConsoleCol.WriteLine("WHISPER Started... RecognizeSpeechAsync и DetectLanguageAsync", ConsoleColor.Yellow);
-
-
-        //SPostid = LanguageCode
-
-        string languageCode = "";
-        string detectedLanguage = "";
-        double confidence = 0;
-        if (entity?.SPostid?.Length != 2 || entity.SPostid != "")
-        {
-            (languageCode, detectedLanguage, confidence) = await DetectLanguageAsync(audioFilePath);
-        }
-        
-
-        string _recognizedText = "";
-
-        if (!_options.Value.CustomModels.ContainsKey(languageCode) || !_options.Value.CustomModels.TryGetValue(languageCode, out string modelPath) || !File.Exists(modelPath))
-        {
-            //_recognizedText = await _whisperNet.TranscribeAudio(audioFilePath, languageCode);
-            _logger.LogInformation($"Распознавание _whisperDocker");
-            _recognizedText = await _whisperDocker.TranscribeAsync(audioFilePath);
-        }    
-        else
-        {
-            if (_modelPathWhisperCpp != modelPath)
-            {
-                _logger.LogInformation($"Загрузка модели {modelPath}");
-                await _whisperCpp.LoadModelAsync(modelPath);
-                _modelPathWhisperCpp = modelPath;
-            }
-
-            _logger.LogInformation($"Распознавание _whisperCpp");
-            _recognizedText = await _whisperCpp.ProcessInferenceAsync(audioFilePath);
-
-        }
-
-        //string recognizedText = await _recognizedText; //дожидаемся _recognizedText...
-        string recognizedText = _recognizedText; //дожидаемся _recognizedText...
-        _logger.LogWarning(recognizedText);
+        _logger.LogInformation(recognizedText);
 
         item.ProcessedWhisper++;
-        await UpdateTodoItemStateAsync(item, $"Идёт выполнение: {item.CompletedKeys}/{item.TotalKeys}. Стадия: Analisis.", ct);
 
-        // Delete earlier created file
-        Files.DeleteFilesByPath(audioFilePath);
-
-        // OLLAMA + ORACLE => Run task !!!_WITHOUT await
-        //item.CompletedKeys++; выполняется внутри ProcessOllamaAndUpdateEntityAsync
-        
         // PreText => get PreText for operator or PreTextDefault
         string preText = await Params.GetPreTextAsync(entity.SSourcename);
+
         _ = ProcessOllamaAndUpdateEntityAsync(entity.SInckey, recognizedText, languageCode, detectedLanguage, preText, _configuration["AiModelName"], _configuration, item, ct);
 
         // разрешить "вырываться вперёд не более чем на N раз" и ProcessedAi
@@ -343,6 +335,54 @@ public class AiBackgroundService : BackgroundService
             _logger.LogWarning("Ollama / Whisper => " + item.CompletedKeys + " / " + item.ProcessedWhisper);
         }
         _logger.LogInformation("ProcessedOllama / ProcessedWhisper => " + item.CompletedKeys + "/" + item.ProcessedWhisper);
+    }
+
+    private async Task<(string, string, string)> ProcessWhisper(SprSpeechTable entity, string audioFilePath, CancellationToken ct)
+    {
+        string? recognizedText, detectedLanguage, languageCode = "";
+        try
+        {
+            ConsoleCol.WriteLine("WHISPER Started... RecognizeSpeechAsync и DetectLanguageAsync", ConsoleColor.Yellow);
+            languageCode = entity?.SPostid;
+            detectedLanguage = entity?.SBelong;
+            double confidence = 0;
+
+            if (languageCode?.Length != 2 || languageCode != "undefined" || languageCode != "yue" || languageCode != "haw") //SPostid = LanguageCode
+            {
+                (languageCode, detectedLanguage, confidence) = await DetectLanguageAsync(audioFilePath);
+            }
+
+            // Если язык не из списка, на который есть модель - Default через Docker Api
+            if (!_options.Value.CustomModels.ContainsKey(languageCode) || !_options.Value.CustomModels.TryGetValue(languageCode, out string modelPath) || !File.Exists(modelPath))
+            {
+                //_recognizedText = await _whisperNet.TranscribeAsync(audioFilePath, languageCode);
+                _logger.LogInformation($"Распознавание _whisperFasterDocker");
+                recognizedText = await _whisperFasterDocker.TranscribeAsync(audioFilePath);
+            }
+            // Иначе - WhisperCpp Api
+            else
+            {
+                if (_modelPathWhisperCpp != modelPath)
+                {
+                    _logger.LogInformation($"Загрузка модели {modelPath}");
+                    await _whisperCpp.LoadModelAsync(modelPath);
+                    _modelPathWhisperCpp = modelPath;
+                }
+
+                _logger.LogInformation($"Распознавание _whisperCpp");
+                recognizedText = await _whisperCpp.TranscribeAsync(audioFilePath);
+            }
+            return (recognizedText, detectedLanguage, languageCode);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e.Message);
+            throw new FailedWhisperRequestException("Whisper Error: ", e);
+        }
+        finally
+        {
+            Files.DeleteFilesByPath(audioFilePath);
+        }
     }
 
     private async Task ProcessOllamaAndUpdateEntityAsync(long? entityId, string recognizedText, string languageCode, string detectedLanguage, string preText, string modelName, IConfiguration Configuration, TodoItem item, CancellationToken stoppingToken)
@@ -374,6 +414,8 @@ public class AiBackgroundService : BackgroundService
         }
         catch (Exception ex)
         {
+            item.ProcessingMessage = ex.StackTrace;
+            item.LastError = ex.Message;
             ConsoleCol.WriteLine("Ошибка при обработке Ollama и обновлении сущности EFCore: " + ex.Message, ConsoleColor.Red);
         }
 
@@ -387,11 +429,11 @@ public class AiBackgroundService : BackgroundService
 
     private async Task FinalizeProcessing(TodoItem item, CancellationToken ct)
     {
-        var message = item.IsCyclic && !await ReloadIsStopPressedByItemId(item.Id)
-            ? $"Обработано {item.CompletedKeys}/{item.TotalKeys}. Ожидание повтора"
+        item.ProcessingMessage = item.IsCyclic && !await ReloadIsStopPressedByItemId(item.Id)
+            ? $"Обработано {item.CompletedKeys}/{item.TotalKeys}. Ожидание повторного запуска..."
             : $"Процесс остановлен. Выполнено: {item.CompletedKeys}/{item.TotalKeys}";
-
-        await UpdateTodoItemStateAsync(item, message, ct);
+        
+        await UpdateTodoItemStateAsync(item, ct);
     }
 
     private async Task<bool> ShouldStopProcessing(TodoItem item) {
@@ -413,7 +455,7 @@ public class AiBackgroundService : BackgroundService
         var ReloadedTodoItemById = await _sqliteDbContext.CreateDbContext().LoadTodoItem(Id);
         return ReloadedTodoItemById.IsRunPressed;
     }
-    private async Task UpdateTodoItemStateAsync(TodoItem item, string message, CancellationToken _stoppingToken)
+    private async Task UpdateTodoItemStateAsync(TodoItem item, CancellationToken _stoppingToken)
     {
         using var context = _sqliteDbContext.CreateDbContext();
         var todoItemFromDb = await context.TodoItems.FindAsync(item.Id);
@@ -425,7 +467,7 @@ public class AiBackgroundService : BackgroundService
             todoItemFromDb.CompletedLanguageDetect = item.CompletedLanguageDetect;
             todoItemFromDb.TotalKeys = item.TotalKeys;
             todoItemFromDb.Statistic = item.Statistic;
-            todoItemFromDb.ProcessingMessage = message;
+            todoItemFromDb.ProcessingMessage = item.ProcessingMessage;
             await context.SaveChangesAsync();
         }
         await _hubContext.Clients.All.SendAsync("UpdateTodos", todoItemFromDb, _stoppingToken);

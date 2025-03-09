@@ -13,35 +13,16 @@ using Shield.Estimator.Business.Options;
 using Shield.Estimator.Business.Options.KoboldOptions;
 
 namespace Shield.Estimator.Business.Services;
-public class WhisperDockerService
+public class WhisperXDockerService
 {
     private readonly HttpClient _httpClient;
-    private readonly IOptions<WhisperDockerOptions> _options;
+    private readonly IOptions<WhisperXDockerOptions> _options;
 
-    public WhisperDockerService(HttpClient httpClient, IOptions<WhisperDockerOptions> options)
+    public WhisperXDockerService(HttpClient httpClient, IOptions<WhisperXDockerOptions> options)
     {
         _httpClient = httpClient;
         _options = options;
     }
-
-    public async Task<(string, string, double)> DetectLanguageAsync(string audioFilePath)
-    {
-        try
-        {
-            var jsonResponse = await SendAudioRequestAsync(audioFilePath, _options.Value.DetectLanguageUrl);
-
-            var result = JsonDocument.Parse(jsonResponse);
-            return (result.RootElement.GetProperty("language_code").GetString().ToLower(),
-                    result.RootElement.GetProperty("detected_language").GetString(),
-                    result.RootElement.GetProperty("confidence").GetDouble()
-                    );
-        }
-        catch (Exception ex)
-        {
-            throw new FailedWhisperRequestException($"DetectLanguageAsync Ошибка при тринскрибировании текста: {ex.Message}", ex);
-        }
-    }
-
     public async Task<string> TranscribeAsync(string audioFilePath)
     {
         try
@@ -81,7 +62,7 @@ public class WhisperDockerService
         var responseText = await response.Content.ReadAsStringAsync();
 
         DateTime endTime = DateTime.Now;
-        Console.WriteLine($"\n########## {requestUrl} \nВремя выполнения Whisper = {((int)Math.Round((endTime - startTime).TotalSeconds))} sec.");
+        Console.WriteLine($"\n########## {requestUrl} \nВремя выполнения WhisperX = {((int)Math.Round((endTime - startTime).TotalSeconds))} sec.");
 
         return responseText;
     }

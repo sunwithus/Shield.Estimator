@@ -32,6 +32,7 @@ namespace Shield.Estimator.Shared.Components.Modules.Replicator
                 {
                     string timestampString = parts[0].Insert(2, "-").Insert(5, "-") + " " + parts[1].Insert(2, ":").Insert(5, ":");
                     DateTime timestamp = DateTime.ParseExact(timestampString, DateFormatWav, null);
+                    Console.WriteLine(timestamp.ToString());
 
                     return new ParsedIdenties
                     {
@@ -47,6 +48,8 @@ namespace Shield.Estimator.Shared.Components.Modules.Replicator
                 {
                     string timestampString = parts[4] + " " + parts[5].Substring(0, 2) + ":" + parts[6].Substring(0, 2) + ":" + parts[7].Substring(0, 2);
                     DateTime timestamp = DateTime.ParseExact(timestampString, DateFormatMp3, null);
+                    Console.WriteLine(timestamp.ToString());
+
                     short calltype = (short)((parts[3] == "In") ? 0 : (parts[3] == "Out") ? 1 : 2); //тип вызова 0-входящий, 1-исходящий, 2-неизвестный...
                     return new ParsedIdenties
                     {

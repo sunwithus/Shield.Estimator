@@ -37,7 +37,7 @@ public class WhisperCppService
         }
     }
 
-    public async Task<string> ProcessInferenceAsync(string audioFilePath, InferenceRequestDto parameters = null)
+    public async Task<string> TranscribeAsync(string audioFilePath, InferenceRequestDto parameters = null)
     {
         try
         {

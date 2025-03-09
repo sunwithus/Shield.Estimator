@@ -41,7 +41,7 @@ public class WhisperNetService : IDisposable
 
     }
 
-    public async Task<string> TranscribeAudio(string audioFilePath, string language = "auto")
+    public async Task<string> TranscribeAsync(string audioFilePath, string language = "auto")
     {
         var sw = Stopwatch.StartNew();
         try

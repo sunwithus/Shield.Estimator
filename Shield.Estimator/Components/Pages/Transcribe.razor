@@ -4,7 +4,7 @@
 @using Shield.Estimator.Shared.Components.Modules._Shared
 @using Shield.Estimator.Business.Services
 @inject IConfiguration conf
-@inject WhisperDockerService WhisperService
+@inject WhisperFasterDockerService whisperFasterDockerServise
 
 <PageTitle>🔊 Transcribe audio</PageTitle>
 
@@ -161,7 +161,7 @@
                 isTranscribing = true;
                 transcriptionResult = "";
                 DateTime processingTime = DateTime.Now;
-                transcriptionResult = await WhisperService.TranscribeAsync(audioFilePath);
+                transcriptionResult = await whisperFasterDockerServise.TranscribeAsync(audioFilePath);
                 //transcriptionResult = $"Время выполнения: {(DateTime.Now - processingTime).TotalSeconds} сек.\n {transcriptionResult}";
                 isTranscribed = true;
             }

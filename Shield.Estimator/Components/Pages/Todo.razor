@@ -46,13 +46,19 @@
                                 <MudButton Disabled="false" Variant="Variant.Filled" Style="height:32px; width: 32px;" Color="@colorTag" OnClick="@(async () => await StopButtonPressed(todo))">◼</MudButton>
                             </MudText>
                             <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">@todo.Title.PadRight(25) &emsp;<b>→ @todo.Scheme</b></MudText>
-                            <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">todo.Statistic = @todo.Statistic</MudText>
+                            <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">@todo.Statistic</MudText>
                         </MudText>
                         <MudText Class="d-flex ml-auto" Color="@colorTag" Style="display: flex; justify-content: flex-end;">
                             <MudText Typo="Typo.body2">@todo.ProcessingMessage &emsp;</MudText>
                             @*<MudProgressLinear Vertical="true" Color="@colorTag" Size="Size.Medium" Indeterminate="true" Striped="true" Rounded="true" />*@
                         </MudText>
                     </MudText>
+                    @if(todo.Statistic != "") 
+                    {
+                    <MudText Style="display:flex;">
+                        sdf
+                    </MudText>
+                    }
                 </TitleContent>
                 <ChildContent>
                     <MudPaper Style="position: relative;">

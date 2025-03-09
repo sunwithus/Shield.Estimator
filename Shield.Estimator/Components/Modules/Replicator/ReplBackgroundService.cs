@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Shield.Estimator.Shared.Components.Modules._Shared;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora;
+using Shield.Estimator.Business.Logger;
 
 using Polly;
 using Polly.Retry;
@@ -17,6 +18,7 @@ public class ReplBackgroundService : BackgroundService
 {
     private readonly IConfiguration _configuration;
     private FileLogger _fileLogger;
+    private LoggerToFile _logToFile;
     private readonly IHubContext<ReplicatorHub> _hubContext;
     private readonly IDbContextFactory _dbContextFactory;
     private readonly AsyncRetryPolicy _retryPolicy;
@@ -28,6 +30,7 @@ public class ReplBackgroundService : BackgroundService
         _configuration = configuration;
         _hubContext = hubContext;
         _fileLogger=new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+        _logToFile = new LoggerToFile(@".\Logs\ReplicatorLog.txt");
         //Эта политика повторяет операцию до N раз с выдержкой, 1,2,3... секунд
         _retryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(4, retryAttempt => TimeSpan.FromSeconds(retryAttempt));
     }
@@ -37,7 +40,7 @@ public class ReplBackgroundService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             // Задержка между циклами
-            await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(8), stoppingToken);
             try
             {
                 await CheckFilesToReplicate(stoppingToken); 
@@ -46,6 +49,7 @@ public class ReplBackgroundService : BackgroundService
             {
                 Console.WriteLine($"Ошибка в ReplBackgroundService: {ex.Message}");
                 _fileLogger.Log($"Ошибка в ReplBackgroundService: {ex.Message}");
+                await _logToFile.AddLogMessage($"Ошибка в ReplBackgroundService: {ex.Message}");
             }
         }
     }
@@ -66,12 +70,12 @@ public class ReplBackgroundService : BackgroundService
             foreach (var file in JsonFiles) 
             {
                 var json = await File.ReadAllTextAsync(file);
-                DataForBackgroungService paramsRepl = JsonSerializer.Deserialize<DataForBackgroungService>(json);
+                JsonReplicatorQueue paramsRepl = JsonSerializer.Deserialize<JsonReplicatorQueue>(json);
                 
                 await ReplicateAudioFromDirectory(paramsRepl, cancellationToken);
                 await Task.Delay(800, cancellationToken);
 
-                Files.DeleteDirectory(paramsRepl.PathToSaveTempAudio);
+                Files.DeleteDirectory(paramsRepl.FolderToSaveTempAudio);
                 Files.DeleteFilesByPath(file);
             }
         }
@@ -82,10 +86,10 @@ public class ReplBackgroundService : BackgroundService
         }
     }
 
-    private async Task ReplicateAudioFromDirectory(DataForBackgroungService paramsRepl, CancellationToken cancellationToken)
+    private async Task ReplicateAudioFromDirectory(JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
     {
 
-        var filesAudio = Directory.EnumerateFiles(paramsRepl.PathToSaveTempAudio);
+        var filesAudio = Directory.EnumerateFiles(paramsRepl.FolderToSaveTempAudio);
         
         if (!filesAudio.Any())
         {
@@ -110,6 +114,7 @@ public class ReplBackgroundService : BackgroundService
             {
                 Console.WriteLine($"BackGroung Repl OperationCanceledException => Ошибка при обработке файла {filePath}: {ex.Message}");
                 _fileLogger.Log($"BackGroung Repl OperationCanceledException => Ошибка при обработке файла {filePath}: {ex.Message}");
+                await _logToFile.AddLogMessage($"Ошибка в ReplBackgroundService OperationCanceledException: {ex.Message}");
                 await _hubContext.Clients.All.SendAsync("ReceiveMessage", $"❌ OperationCanceledException Ошибка при обработке файла {filePath}: {ex.Message}", cancellationToken);
             }
             catch (Exception ex)
@@ -125,9 +130,11 @@ public class ReplBackgroundService : BackgroundService
             }
         }
         _fileLogger.Log($"Выполнено {count}/{filesAudio.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
+
+        await _logToFile.AddLogMessage($"Выполнено {count}/{filesAudio.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
     }
 
-    private async Task ProcessSingleAudio(string filePath, DataForBackgroungService paramsRepl, CancellationToken cancellationToken)
+    private async Task ProcessSingleAudio(string filePath, JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
     {
 
 

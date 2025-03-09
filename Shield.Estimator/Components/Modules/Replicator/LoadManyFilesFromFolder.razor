@@ -54,6 +54,8 @@ else if (isVisibleFilesList)
     public MudBlazor.Color colorButton { get; set; }
     [Parameter]
     public EventCallback<bool> OnFinishLoading { get; set; }
+    [Parameter]
+    public string FolderToSaveTempAudio { get; set; }
 
     private List<IBrowserFile> loadedFiles = new();
     private long maxFileSize = 1024 * 1024 * 512;
@@ -74,8 +76,9 @@ else if (isVisibleFilesList)
         isVisibleFilesList = false;
         loadedFiles.Clear();
 
-        string pathToSaveTempAudio = Configuration["AudioPathForReplicator"];// + Guid.NewGuid();
-        //Files.CreateDirectory(pathToSaveTempAudio+"\\");
+        string randomName = Guid.NewGuid().ToString();
+        string pathTempAudio = Path.Combine(FolderToSaveTempAudio, randomName);
+        Files.CreateDirectory(pathTempAudio);
 
         progressPercent = 0;
 
@@ -93,7 +96,7 @@ else if (isVisibleFilesList)
                 try
                 {
                     var trustedFileName = file.Name.Replace(" ", "").Replace("—", "");
-                    string filePath = Path.Combine(pathToSaveTempAudio, trustedFileName);
+                    string filePath = Path.Combine(pathTempAudio, trustedFileName);
 
                     using var readStream = file.OpenReadStream(maxFileSize);
                     using var writeStream = new FileStream(filePath, FileMode.Create);
@@ -118,31 +121,32 @@ else if (isVisibleFilesList)
 
             await Task.WhenAll(tasks);
         }
-        //await CreateJsonForBackgroungService (pathToSaveTempAudio);
+        _ = await CreateJsonForBackgroungService(FolderToSaveTempAudio, randomName);
         isLoading = false; // проценты выполнения
         isVisibleFilesList = true; // таблица с файлами
         await OnFinishLoading.InvokeAsync(true);
     }
 
-    public async Task CreateJsonForBackgroungService (string pathToSaveTempAudio) 
+    public async Task<string> CreateJsonForBackgroungService(string FolderToSaveTempAudio, string randomName)
     {
         SettingsDb = SettingsDbList.FirstOrDefault(x => x.Selected == true);
-        DataForBackgroungService DataForBack = new();
-        DataForBack.PathToSaveTempAudio = pathToSaveTempAudio + "//";
+        JsonReplicatorQueue DataForBack = new();
+        DataForBack.FolderToSaveTempAudio = Path.Combine(FolderToSaveTempAudio, randomName);
         DataForBack.SourceName = sourceName;
         DataForBack.DbType = SettingsDb.DbType;
         DataForBack.Scheme = SettingsDb.Scheme;
         DataForBack.DbConnectionSettings = SelectDb.ConStringDBA(SettingsDb);
 
-        string pathToJson = pathToSaveTempAudio + ".json";
-    
+        string pathToJson = Path.Combine(FolderToSaveTempAudio, randomName + ".json");
+
         var options = new JsonSerializerOptions { 
             WriteIndented = true, 
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping //for cirillica
         };
         var json = JsonSerializer.Serialize(DataForBack, options);
-        await File.WriteAllTextAsync(pathToJson, json); 
+        await File.WriteAllTextAsync(pathToJson, json);
+        return pathToJson;
     }
 
 }
