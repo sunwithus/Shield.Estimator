@@ -41,7 +41,7 @@
         <MudText Style="width: 325px;">
             <ChooseOperator colorButton="@colorButton" OnOperatorSelected="HandleOperatorSelected" />
         </MudText>
-        <LogContent />
+        
     </MudText>
 
     @if(!string.IsNullOrEmpty(operatorName))
@@ -52,13 +52,16 @@
     {
         <MudText Typo="Typo.body1" Color="@colorButton">Выберите значение "Имя источнника (Шаблон запроса)"</MudText>
     }
-
+    
     @if(isFilesLoaded)
     {
         <br />
         <MudText Typo="Typo.body1" Color="@colorButton">Файлы загружены на сервер, запись в БД началась. Со страницы можно уходить.</MudText>
+        
         @*<MudButton OnClick="@(async () => await StartReplication())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Пуск!</MudButton>*@
     }
+    <br />
+    <LogContent />
 @*
     @if (!string.IsNullOrEmpty(message))
     {
@@ -103,7 +106,7 @@
     protected override async Task OnInitializedAsync()
     {
         SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
-        ReplSingleton.ReplInstance.ReplPropertyChanged += Singleton_PropertyChanged;
+        //ReplSingleton.ReplInstance.ReplPropertyChanged += Singleton_PropertyChanged;
         StateHasChanged();
 
         //_logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
@@ -144,7 +147,7 @@
 
         int count = 0;
         int total = filesAudio.Length;
-        ReplSingleton.ReplInstance.IsStoped = false;
+        //ReplSingleton.ReplInstance.IsStoped = false;
 
         try
         {
@@ -160,7 +163,7 @@
                         Console.WriteLine($"Repl => Файл обработан: {filePath}");
                         await InvokeAsync(StateHasChanged);
                         count++;
-                        ReplSingleton.ReplInstance.ProgressExec = count * 100 / total;
+                        //ReplSingleton.ReplInstance.ProgressExec = count * 100 / total;
                     }
                     catch (Exception ex)
                     {
@@ -180,8 +183,8 @@
         }
 
         Files.DeleteFilesByPath(filesAudio);
-        ReplSingleton.ReplInstance.IsStoped = true;
-        ReplSingleton.ReplInstance.ProgressExec = 0;
+        //ReplSingleton.ReplInstance.IsStoped = true;
+        //ReplSingleton.ReplInstance.ProgressExec = 0;
 
     }
 

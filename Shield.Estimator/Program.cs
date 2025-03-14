@@ -11,7 +11,6 @@ using MudBlazor.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContextFactory<SqliteDbContext>();
-//builder.Services.AddSingleton<SqliteDbContext>();
 
 //WhisperService, KoboldService
 builder.Services.AddBusinessServices(builder.Configuration);

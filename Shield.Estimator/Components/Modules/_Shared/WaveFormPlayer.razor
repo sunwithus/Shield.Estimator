@@ -113,18 +113,26 @@
         Files.CreateDirectory(Path.GetDirectoryName(path));
         try
         {
+            
+            
+            if (AudioDataLeft != null) ConsoleCol.WriteLine("AudioDataLeft != null", ConsoleColor.DarkYellow);
             ConsoleCol.WriteLine("RecordType: " + RecordType, ConsoleColor.DarkYellow);
             IsAudioLoadErr = false;
             if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
             {
                 await DbToAudioConverter.UsingDecoderAsync(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+                Console.WriteLine("UsingDecoderAsync");
+                Console.WriteLine(path.ToString());
             }
             else
             {
                 await DbToAudioConverter.UsingStreamsMakeStereoAsync(AudioDataLeft, AudioDataRight, path, conf);
+                Console.WriteLine("UsingStreamsMakeStereoAsync");
+
             }
 
             string url = NavigationManager.BaseUri + "files/" + UnicId + ".wav";
+            Console.WriteLine(url.ToString());
             try
             {
                 IsAudioLoading = true;

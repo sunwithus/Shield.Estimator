@@ -26,6 +26,7 @@ public class WhisperFasterDockerService
 
     public async Task<(string, string, double)> DetectLanguageAsync(string audioFilePath)
     {
+
         try
         {
             var jsonResponse = await SendAudioRequestAsync(audioFilePath, _options.Value.DetectLanguageUrl);

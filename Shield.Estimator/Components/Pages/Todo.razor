@@ -36,7 +36,9 @@
     <MudExpansionPanels MultiExpansion="true" >
         @foreach (var todo in todos)
         {
+
             <MudExpansionPanel @key="todo.Id" Expanded="@IsPanelExpanded">
+
                 <TitleContent>
                     <MudText Style="display:flex;">
                         <MudText Style="display:flex; justify-content:start;">
@@ -46,19 +48,34 @@
                                 <MudButton Disabled="false" Variant="Variant.Filled" Style="height:32px; width: 32px;" Color="@colorTag" OnClick="@(async () => await StopButtonPressed(todo))">◼</MudButton>
                             </MudText>
                             <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">@todo.Title.PadRight(25) &emsp;<b>→ @todo.Scheme</b></MudText>
-                            <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">@todo.Statistic</MudText>
+                            
                         </MudText>
                         <MudText Class="d-flex ml-auto" Color="@colorTag" Style="display: flex; justify-content: flex-end;">
                             <MudText Typo="Typo.body2">@todo.ProcessingMessage &emsp;</MudText>
                             @*<MudProgressLinear Vertical="true" Color="@colorTag" Size="Size.Medium" Indeterminate="true" Striped="true" Rounded="true" />*@
                         </MudText>
                     </MudText>
-                    @if(todo.Statistic != "") 
-                    {
-                    <MudText Style="display:flex;">
-                        sdf
+                    <MudText>
+                        @if (!string.IsNullOrEmpty(todo.Statistic))
+                        {
+                            <MudText Typo="Typo.caption" Color="@colorTag" Style="width: 190px;">Задача @todo.Title => @todo.Statistic</MudText>
+                            <MudText Style="display:flex;">
+                                @foreach (var entry in todo.LanguageCounts)
+                                {
+                                    var languageCode = entry.Key;
+                                    var count = entry.Value;
+                                    var languageName = todo.LanguageNames.TryGetValue(languageCode, out var name)
+                                    ? name
+                                    : "неизвестный язык";
+
+                                    <MudText Style="display:flex;" Typo="Typo.caption">
+                                        <i>@($"{languageName} ({languageCode})-{count} шт.")</i>
+                                        &emsp;
+                                    </MudText>
+                                }
+                            </MudText>
+                        }
                     </MudText>
-                    }
                 </TitleContent>
                 <ChildContent>
                     <MudPaper Style="position: relative;">
@@ -122,7 +139,9 @@
                         <p>todo.EndExecutionTime => @todo.EndExecutionTime</p>
                     }
                 </ChildContent>
+
             </MudExpansionPanel>
+
         }
     </MudExpansionPanels>
     <MudText Style="display:flex; justify-content: flex-end">
@@ -201,6 +220,8 @@
                 existingTodo.EndExecutionTime = todo.EndExecutionTime;
                 existingTodo.LastError = todo.LastError;
                 existingTodo.Statistic = todo.Statistic;
+                existingTodo.LanguageCounts = todo.LanguageCounts;
+                existingTodo.LanguageNames = todo.LanguageNames;
                 //Todo подумать как по другому присваивать existingTodo=todo
                 //existingTodo = todo; //ссылочный тип
             }

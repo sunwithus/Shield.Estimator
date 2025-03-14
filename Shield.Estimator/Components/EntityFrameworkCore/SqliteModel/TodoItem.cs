@@ -1,5 +1,7 @@
 ﻿// TodoItem.cs
 
+using System.Collections.Concurrent;
+
 namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel
 {
     public class TodoItem
@@ -32,6 +34,9 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel
         public bool IsExecutionTime { get; set; } = false;
         public TimeSpan? StartExecutionTime { get; set; } = new TimeSpan(20, 00, 00);
         public TimeSpan? EndExecutionTime { get; set; } = new TimeSpan(08, 00, 00);
+
+        public ConcurrentDictionary<string, int> LanguageCounts { get; set; } = new ConcurrentDictionary<string, int>();
+        public ConcurrentDictionary<string, string> LanguageNames { get; set; } = new ConcurrentDictionary<string, string>();
 
         public void ResetCounters()
         {

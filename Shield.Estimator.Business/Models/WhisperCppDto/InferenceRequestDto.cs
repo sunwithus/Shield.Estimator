@@ -25,7 +25,7 @@ public class InferenceRequestDto
     public double? LogprobThold { get; set; }
     public bool? DebugMode { get; set; }
     public bool? Translate { get; set; }
-    public bool? Diarize { get; set; }
+    public bool? Diarize { get; set; } = true;
     public bool? Tinydiarize { get; set; }
     public bool? NoFallback { get; set; }
     public bool? PrintSpecial { get; set; }

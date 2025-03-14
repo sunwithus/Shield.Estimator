@@ -35,10 +35,8 @@ public class WhisperNetService : IDisposable
     }
     private void InitializeRuntime()
     {
-        RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Cuda, RuntimeLibrary.Cpu];
+        RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Cuda, RuntimeLibrary.Vulkan, RuntimeLibrary.Cpu];
         //using var whisperLogger = LogProvider.AddConsoleLogging(WhisperLogLevel.Info);
-
-
     }
 
     public async Task<string> TranscribeAsync(string audioFilePath, string language = "auto")

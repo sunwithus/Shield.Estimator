@@ -177,7 +177,7 @@
 
 
 
-                await WhisperCppService.LoadModelAsync(@"C:\dotnet\whisper.cpp.cpu\models\ggml-tiny-mongolian.bin");
+                //await WhisperNetService.LoadModelAsync(@"E:\AiModels\Whisper\ggml-meduim-mongolian-final.bin");
                 Console.WriteLine("Новая модель загружена.");
 
                 var parameters = new InferenceRequestDto
@@ -188,7 +188,7 @@
                         ResponseFormat = "text",
                         Language = "auto"
                     };
-                var result = await WhisperCppService.TranscribeAsync(audioFilePath, parameters);
+                var result = await WhisperNetService.TranscribeAsync(audioFilePath);
 
                 transcriptionResult = result;
                 //transcriptionResult = await WhisperNetService.TranscribeAudio(audioFilePath, "uz");
