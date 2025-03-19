@@ -10,7 +10,6 @@
 @using System.ComponentModel
 @using UglyToad.PdfPig
 @using UglyToad.PdfPig.Content
-@using GemBox.Document
 @using System.Text
 @using Microsoft.Extensions.Configuration
 @using UglyToad.PdfPig.DocumentLayoutAnalysis.PageSegmenter
@@ -127,7 +126,6 @@
     private bool IsGB2312 = true;
     int FilesCount = 0;
 
-    private string PathArialFont2 = Path.Combine(AppContext.BaseDirectory, "ARIALUNI.TTF");
     private string PathArialFont = Path.Combine(AppContext.BaseDirectory, "BitstreamCyberbit.ttf");
 
     private string PreText;

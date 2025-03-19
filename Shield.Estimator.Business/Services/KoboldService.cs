@@ -97,4 +97,5 @@ public class KoboldService
         if (string.IsNullOrEmpty(options.PromptBefore) || string.IsNullOrEmpty(options.PromptAfter))
             throw new ArgumentException("Prompt wrappers are required in configuration");
     }
+
 }

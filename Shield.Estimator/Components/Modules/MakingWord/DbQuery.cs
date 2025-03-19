@@ -35,10 +35,11 @@ namespace Shield.Estimator.Shared.Components.Modules.MakingWord
                     Cid = speech.SCid,
                     Lac = speech.SLac,
                     Basestation = speech.SBasestation,
+                    RecordType = speech.SEventcode,
                     Comment = commentTables.FirstOrDefault(c => c.SInckey == speech.SInckey)?.SComment,
                     AudioF = data1Tables.FirstOrDefault(c => c.SInckey == speech.SInckey)?.SFspeech,
                     AudioR = data1Tables.FirstOrDefault(c => c.SInckey == speech.SInckey)?.SRspeech,
-                    RecordType = data1Tables.FirstOrDefault(c => c.SInckey == speech.SInckey)?.SRecordtype
+                    //RecordType = data1Tables.FirstOrDefault(c => c.SInckey == speech.SInckey)?.SRecordtype
                 }).ToList();
 
                 await context.Database.CloseConnectionAsync();

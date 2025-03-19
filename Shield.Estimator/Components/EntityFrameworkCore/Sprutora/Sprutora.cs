@@ -37,10 +37,10 @@ namespace Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora
         public int? SEvent { get; set; } = -1;
 
         [Column("S_EVENTCODE")] //Событие (оригинал) - GSM (совпадает с RecordType)
-        public string? SEventcode { get; set; } = "GSM";
+        public string? SEventcode { get; set; }
 
         [Column("S_STANDARD")] //стандарт системы связи - GSM_ABIS
-        public string? SStandard { get; set; } = "GSM_ABIS";
+        public string? SStandard { get; set; }
 
         [Column("S_NETWORK")] //
         public string? SNetwork { get; set; }

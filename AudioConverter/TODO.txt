@@ -1,0 +1,177 @@
+пример тестов с использованием xUnit и Moq для тестирования DecoderConverter. Основные аспекты тестирования:
+
+Интеграция с Process:
+
+csharp
+// Mock для Process
+public class MockProcessRunner : IProcessRunner
+{
+    public Task<(int ExitCode, string Output, string Error)> RunProcessAsync(
+        string fileName, 
+        string arguments)
+    {
+        // Эмулируем успешное выполнение
+        return Task.FromResult((0, "", ""));
+    }
+}
+
+// Внедряем зависимости через конструктор
+public class DecoderConverterTests
+{
+    private readonly Mock<IFileSystem> _fileSystemMock;
+    private readonly MockProcessRunner _processRunner;
+    private readonly DecoderConverter _converter;
+
+    public DecoderConverterTests()
+    {
+        _fileSystemMock = new Mock<IFileSystem>();
+        _processRunner = new MockProcessRunner();
+        
+        _converter = new DecoderConverter(
+            new OptionsWrapper<AudioConverterOptions>(new AudioConverterOptions()),
+            _fileSystemMock.Object,
+            _processRunner);
+    }
+}
+Тест конвертации файла в поток:
+
+csharp
+[Fact]
+public async Task ConvertFileToStreamAsync_ValidFile_ReturnsStream()
+{
+    // Arrange
+    var testFile = "test.wav";
+    _fileSystemMock.Setup(fs => fs.FileExists(testFile)).Returns(true);
+
+    // Act
+    var result = await _converter.ConvertFileToStreamAsync(testFile);
+
+    // Assert
+    Assert.NotNull(result);
+    Assert.True(result.Length > 0);
+}
+Тест обработки ошибок декодера:
+
+csharp
+[Fact]
+public async Task ConvertFileToStreamAsync_DecoderFails_ThrowsException()
+{
+    // Arrange
+    var faultyRunner = new MockProcessRunner(shouldFail: true);
+    var converter = new DecoderConverter(..., faultyRunner);
+
+    // Act & Assert
+    await Assert.ThrowsAsync<InvalidOperationException>(
+        () => converter.ConvertFileToStreamAsync("badfile.wav"));
+}
+Тест работы с временными файлами:
+
+csharp
+[Fact]
+public async Task ConvertByteArrayToStreamAsync_CreatesTempFiles()
+{
+    // Arrange
+    var testData = new byte[] { 0x1, 0x2, 0x3 };
+    var expectedTempPath = Path.Combine(_tempDir, "test.bin");
+
+    // Act
+    await _converter.ConvertByteArrayToStreamAsync(testData);
+
+    // Assert
+    _fileSystemMock.Verify(fs => 
+        fs.WriteAllBytesAsync(It.IsAny<string>(), testData), Times.AtLeastOnce);
+}
+Проверка аргументов командной строки:
+
+csharp
+[Fact]
+public async Task ConvertFileToByteArrayAsync_PassesCorrectArguments()
+{
+    // Arrange
+    const string expectedArgs = "-c_dir \"codecs\" -c PCM-16 -f \"input.wav\"";
+    
+    // Act
+    await _converter.ConvertFileToByteArrayAsync("input.wav");
+
+    // Assert
+    _processRunner.VerifyArgs(expectedArgs);
+}
+Тест многопоточности:
+
+csharp
+[Fact]
+public async Task ConcurrentCalls_ProcessOneByOne()
+{
+    // Act
+    var task1 = _converter.ConvertFileToStreamAsync("file1.wav");
+    var task2 = _converter.ConvertFileToStreamAsync("file2.wav");
+
+    // Assert
+    var result = await Task.WhenAll(task1, task2);
+    Assert.Equal(2, result.Length);
+}
+Советы по организации тестов:
+
+Используйте Test Doubles:
+
+Mock для файловой системы (IFileSystem)
+
+Stub для Process.Start
+
+Fake для временных каталогов
+
+Покрытие основных сценариев:
+
+Успешная конвертация
+
+Ошибки ввода (неверные пути, битые данные)
+
+Пограничные случаи (пустые файлы, максимальные размеры)
+
+Поведение при прерывании операций
+
+Интеграционные тесты:
+
+csharp
+[Fact]
+public async Task Integration_RealConversion_ValidOutput()
+{
+    // Arrange
+    var realConverter = CreateRealConverter();
+    var testData = GenerateTestAudio();
+
+    // Act
+    var result = await realConverter.ConvertByteArrayToStreamAsync(testData);
+
+    // Assert
+    Assert.True(IsValidWaveFile(result));
+}
+Проверка очистки ресурсов:
+
+csharp
+[Fact]
+public async Task TempFiles_DeletedAfterConversion()
+{
+    // Arrange
+    var tempFileTracker = new TempFileTracker();
+
+    // Act
+    await _converter.ConvertByteArrayToFileAsync(...);
+
+    // Assert
+    Assert.Empty(tempFileTracker.GetTempFiles());
+}
+Пример реализации моков:
+
+csharp
+public interface IFileSystem
+{
+    bool FileExists(string path);
+    Task WriteAllBytesAsync(string path, byte[] data);
+    Stream OpenRead(string path);
+}
+
+public interface IProcessRunner
+{
+    Task RunAsync(string fileName, string arguments);
+}

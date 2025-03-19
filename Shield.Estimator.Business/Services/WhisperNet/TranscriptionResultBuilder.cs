@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Whisper.net.Logger;
+﻿using System.Text;
 
 namespace Shield.Estimator.Business.Services.WhisperNet;
 
@@ -18,21 +13,26 @@ public class TranscriptionStringBuilder
         _totalChannels = totalChannels;
     }
 
-    public void AppendSegment(string text, int currentChannel)
+    public void AppendSegment(string text, int currentChannel, string? segmentStartEnd = null)
     {
-       
-        if (_previousChannel == currentChannel)
+        var speakerLabel = GetSpeakerLabel(currentChannel);
+        var isNewSpeaker = _previousChannel != currentChannel;
+
+        _sb.Append(isNewSpeaker ? $"\n{speakerLabel}: " : "");
+
+        if (segmentStartEnd != null)
         {
-            _sb.Append($"{text} ");
+            _sb.Append($"\n{segmentStartEnd}: ");
         }
-        else
-        {
-            var speakerLabel = currentChannel < _totalChannels
-                ? $"Собеседник {currentChannel + 1}"
-                : "Неизвестный";
-            _sb.Append($"\n{speakerLabel}: {text} ");
-        }
+
+        _sb.Append($"{text} ");
         _previousChannel = currentChannel;
+    }
+    private string GetSpeakerLabel(int currentChannel)
+    {
+        return currentChannel < _totalChannels
+            ? $"Собеседник {currentChannel + 1}"
+            : "Неизвестный";
     }
 
     public string Build() => _sb.ToString().Trim();

@@ -5,9 +5,6 @@ using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore;
 using System.Text;
 using System.Data;
-using Org.BouncyCastle.Crypto.Digests;
-using DocumentFormat.OpenXml.Office2010.Excel;
-using FFMpegCore.Enums;
 
 
 namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb

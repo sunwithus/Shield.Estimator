@@ -5,11 +5,17 @@
 @using Shield.Estimator.Business.Services.WhisperNet
 @using Shield.Estimator.Business.Services
 @using Shield.Estimator.Business.Models.WhisperCppDto
-@using Shield.Estimator.Business.AudioConverterServices
-@using Shield.Estimator.Business.AudioConverterServices.FFMpeg
+@using Shield.AudioConverter.AudioConverterServices
+@using Shield.AudioConverter.AudioConverterServices.FFMpeg
+@using Shield.AudioConverter.AudioConverterServices.NAudio
+@using Shield.AudioConverter.AudioConverterServices.Decoder
 @inject IConfiguration conf
 @inject WhisperNetService WhisperNetService
 @inject WhisperCppService WhisperCppService
+
+@inject FFMpegConverter ffmpeg
+@inject NAudioConverter naudio
+@inject DecoderConverter decoder
 
 <PageTitle>🔊 Transcribe audio</PageTitle>
 
@@ -72,6 +78,12 @@
                     <MudText>Выполнить</MudText>
                 }
             </MudButton>
+            <br />
+            <MudButton Variant="Variant.Filled" OnClick="@TestAudio">
+
+                <MudText>Тест АудиоКонвертера</MudText>
+
+            </MudButton>
         }
 
         <!-- Result -->
@@ -100,12 +112,10 @@
     int durationOfWav;
     bool isTranscribed = false;
 
-    FFMpegFileToByteArray audioToDbConverter = null;
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        audioToDbConverter = new(conf["PathToFFmpegExe"]);
     }
 
     private async Task UploadFile(IBrowserFile file)
@@ -150,21 +160,33 @@
             Console.WriteLine(" conf[PathToFFmpegExeForReplicator] = " + conf["PathToFFmpegExeForReplicator"]);
 
             await Task.Delay(10);
-                /*
-                try 
-                {
-                (durationOfWav, audioDataLeft, audioDataRight) = await audioToDbConverter.ProcessAudioAsync(audioFilePath);
+            /*
+            try 
+            {
+            (durationOfWav, audioDataLeft, audioDataRight) = await audioToDbConverter.ProcessAudioAsync(audioFilePath);
             }
-                catch (Exception ex)
-                {
-                transcriptionResult = ex.Message;
-                StateHasChanged();
+            catch (Exception ex)
+            {
+            transcriptionResult = ex.Message;
+            StateHasChanged();
         }
         */
         }
 
     }
 
+    private async Task TestAudio()
+    {
+        if (string.IsNullOrEmpty(audioFilePath)) return;
+        var ttt = await ffmpeg.ConvertFileToStreamAsync(audioFilePath);
+        Console.WriteLine(ttt.Length.ToString());
+        ttt = await naudio.ConvertFileToStreamAsync(audioFilePath);
+        Console.WriteLine(ttt.Length.ToString());
+        ttt = await decoder.ConvertFileToStreamAsync(audioFilePath);
+        Console.WriteLine(ttt.Length.ToString());
+
+
+    }
     private async Task TranscribeAudio()
     {
         if (!string.IsNullOrEmpty(audioFilePath))

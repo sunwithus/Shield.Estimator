@@ -14,3 +14,7 @@ prompt
 как улучшить / упростить код?
 
 */
+
+//Потокобезопасный ffmpeg
+//whisper wpf
+//decoder ??? runac - кодеки

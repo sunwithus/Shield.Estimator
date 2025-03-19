@@ -365,3 +365,4 @@ MigrationBackup/
 **/pretextDefault.ini
 **/pattern.docx
 **/ffprobe.exe
+**/ffmpeg.exe

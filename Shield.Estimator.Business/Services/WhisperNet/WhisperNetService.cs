@@ -4,11 +4,9 @@ using Shield.Estimator.Business.Options.WhisperOptions;
 using Microsoft.Extensions.Options;
 using Whisper.net.LibraryLoader;
 using Whisper.net;
-using Whisper.net.Logger;
-using Shield.Estimator.Business.AudioConverterServices;
+using Shield.AudioConverter.AudioConverterServices;
 using Whisper.net.Wave;
 using Microsoft.Extensions.Logging;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
 
 namespace Shield.Estimator.Business.Services.WhisperNet;
@@ -39,26 +37,27 @@ public class WhisperNetService : IDisposable
         //using var whisperLogger = LogProvider.AddConsoleLogging(WhisperLogLevel.Info);
     }
 
-    public async Task<string> TranscribeAsync(string audioFilePath, string language = "auto")
+
+    public async Task<string> TranscribeAsync(string audioFilePath, bool withTimestamps = false, string language = "auto")
     {
+        using var _ = _logger.BeginScope("Transcription for {File}", Path.GetFileName(audioFilePath));
         var sw = Stopwatch.StartNew();
         try
         {
-            var targetModelPath = GetModelPath(language);
-            if (NeedReloadModel(targetModelPath))
-            {
-                _logger.LogWarning("Необходимо загрузить/сменить модель!");
-                await LoadModel(targetModelPath);
-                _logger.LogInformation("Model load: {Time} ms", sw.ElapsedMilliseconds);
-            }
+            string text = string.Empty;
+            var targetModelPath = SelectModelPath(language);
+            await EnsureModelLoaded(targetModelPath);
 
-            using var waveData = await GetWaveStream(audioFilePath);
-            _logger.LogInformation("Audio convert: {Time} ms", sw.ElapsedMilliseconds);
-            var processor = CreateProcessor(language); //var processor = _whisperFactory.CreateBuilder().WithLanguage("auto").Build();
-            _logger.LogInformation("Processor init: {Time} ms", sw.ElapsedMilliseconds);
-            var result = await ProcessWhisperTranscription(waveData, processor);
-            return result;
+            using (var waveData = await ConvertAudioFile(audioFilePath))
+            {
+                using (var processor = CreateProcessor(language)) 
+                {
+                    text = await ProcessAudioTranscription(waveData, processor, sw, withTimestamps);
+                    return text;
+                }
+            }
         }
+        
         catch (Exception ex)
         {
             _logger.LogError(ex, "Audio transcription failed");
@@ -66,114 +65,90 @@ public class WhisperNetService : IDisposable
         }
     }
 
-    private string GetModelPath(string language)
+    private string SelectModelPath(string language)
     {
-        if (!string.IsNullOrEmpty(language)
-            && _options.Value.CustomModels.TryGetValue(language, out var customModel)
+        if (_options.Value.CustomModels.TryGetValue(language, out var customModel)
             && File.Exists(customModel))
         {
             return customModel;
         }
 
-        if (!File.Exists(_options.Value.DefaultModelPath))
-        {
-            throw new FileNotFoundException("Default Whisper model not found", _options.Value.DefaultModelPath);
-        }
-
-        return _options.Value.DefaultModelPath;
+        var defaultPath = _options.Value.DefaultModelPath;
+        return File.Exists(defaultPath)
+            ? defaultPath
+            : throw new FileNotFoundException("Default Whisper model not found", defaultPath);
     }
 
-    private bool NeedReloadModel(string targetModelPath)
+    private async Task EnsureModelLoaded(string modelPath)
     {
-        return _whisperFactory == null || _loadedModelPath != targetModelPath || !File.Exists(_loadedModelPath);
-    }
+        if (_whisperFactory != null && _loadedModelPath == modelPath && !File.Exists(modelPath)) return;
 
-    private async Task LoadModel(string modelPath)
-    {
-        if (_whisperFactory != null)
-        {
-            _logger.LogInformation("Unloading previous model: {Path}", _loadedModelPath);
-            _whisperFactory.Dispose();
-            await Task.Delay(100); // Даем время на выгрузку
-        }
+        _whisperFactory?.Dispose();
+        await using var modelStream = File.OpenRead(modelPath);
 
-        _logger.LogInformation("Loading Whisper model: {Path}", modelPath);
+        _logger.LogInformation("Loading model: {Model}", modelPath);
         _whisperFactory = WhisperFactory.FromPath(modelPath);
         _loadedModelPath = modelPath;
     }
 
     private WhisperProcessor CreateProcessor(string language)
     {
-        var builder = _whisperFactory.CreateBuilder()
-            //.WithPrintTimestamps(false)
-            .WithLanguage(GetLanguageCode(language));
-        /*
-        if (_options.Value.Diarization)
-        {
-            builder.WithDiarization();
-        }
-        */
-        return builder.Build();
+        var langCode = (language.Length == 2 || language == "yue" || language == "haw") ? language : "auto";
+        return _whisperFactory!.CreateBuilder()
+            .WithLanguage(langCode)
+            .WithPrintTimestamps(true)
+            .Build();
     }
 
-    private string GetLanguageCode(string language)
+    private async Task<WaveData> ConvertAudioFile(string audioFilePath)
     {
-        return !string.IsNullOrEmpty(language) && language.Length == 2 ? language : "auto";
-    }
-
-    private async Task<WaveData> GetWaveStream(string audioFilePath)
-    {
-
-        // Вначале NAudio, если не удалось то FFMpeg
         foreach (var converterType in Enum.GetValues<ConverterType>())
         {
-            MemoryStream stream = null;
             try
             {
                 var converter = _converterFactory.CreateConverter(converterType);
-                stream = await converter.ConvertFileToStreamAsync(audioFilePath);
+                var stream = await converter.ConvertFileToStreamAsync(audioFilePath);
 
-                if (stream.Length > 0)
+                if (stream.Length == 0)
                 {
-                    _logger.LogInformation("{Converter} conversion successful", converterType);
-                    var parser = new WaveParser(stream);
-                    await parser.InitializeAsync();
-                    return new WaveData(stream, parser); // Возвращаем экземпляр WaveData
+                    stream.Dispose(); // Освобождаем пустой поток
+                    continue;
                 }
+
+                var parser = new WaveParser(stream);
+                await parser.InitializeAsync();
+                return new WaveData(stream, parser);
             }
             catch (Exception ex)
             {
-                stream?.Dispose();
                 _logger.LogWarning(ex, "{Converter} conversion failed", converterType);
             }
         }
-
         throw new InvalidOperationException("All audio conversions failed");
     }
 
-    private async Task<string> ProcessWhisperTranscription(WaveData waveData, WhisperProcessor processor)
+    private async Task<string> ProcessAudioTranscription(WaveData waveData, WhisperProcessor processor, Stopwatch sw, bool withTimestamps)
     {
-        var resultBuilder = new TranscriptionStringBuilder(waveData.Parser.Channels);
-
         try
         {
-            var samples = await waveData.Parser.GetAvgSamplesAsync(CancellationToken.None);
+            var samples = await waveData.Parser.GetAvgSamplesAsync();
+            var resultBuilder = new TranscriptionStringBuilder(waveData.Parser.Channels);
 
             await foreach (var segment in processor.ProcessAsync(samples))
             {
-                var maxEnergyChannel = await CalculateMaxEnergyChannel(waveData, segment);
-                resultBuilder.AppendSegment(segment.Text, maxEnergyChannel);
+                var channel = await CalculateMaxEnergyChannel(waveData, segment);
+                resultBuilder.AppendSegment(segment.Text, channel, withTimestamps ? $"{segment.Start:hh\\:mm\\:ss\\.f}=>{segment.End:hh\\:mm\\:ss\\.f}" : null);
             }
+
+            _logger.LogInformation("Completed audio processing");
+            return resultBuilder.Build();
         }
         finally
         {
-            // Принудительная очистка памяти GPU
-            await Task.Run(() => GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced));
+            processor.Dispose();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced);
         }
-
-        return resultBuilder.Build();
     }
-
 
     private async Task<int> CalculateMaxEnergyChannel(WaveData waveData, SegmentData segment)
     {
@@ -205,7 +180,7 @@ public class WhisperNetService : IDisposable
         _whisperFactory?.Dispose();
         GC.SuppressFinalize(this);
     }
-    /*
+
     public static async Task RunInParallel(string name, string wavFileName, WhisperFactory whisperFactory)
     {
 
@@ -225,19 +200,33 @@ public class WhisperNetService : IDisposable
             await Task.Delay(1000);
         }
     }
+    public sealed class WaveData : IDisposable
+    {
+        public MemoryStream Stream { get; }
+        public WaveParser Parser { get; }
 
-    
-    // This section creates the whisperFactory object which is used to create the processor object.
-    using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
+        public WaveData(MemoryStream stream, WaveParser parser)
+        {
+            Stream = stream;
+            Parser = parser;
+        }
+        public void Dispose()
+        {
+            Stream?.Dispose();
+        }
+    }
+    /*
+        // This section creates the whisperFactory object which is used to create the processor object.
+        using var whisperFactory = WhisperFactory.FromPath("ggml-base.bin");
 
-    var task1 = Task.Run(() => RunInParallel("Task1", "kennedy.wav", whisperFactory));
-    await Task.Delay(1000);
-    var task2 = Task.Run(() => RunInParallel("Task2", "kennedy.wav", whisperFactory));
+        var task1 = Task.Run(() => RunInParallel("Task1", "kennedy.wav", whisperFactory));
+        await Task.Delay(1000);
+        var task2 = Task.Run(() => RunInParallel("Task2", "kennedy.wav", whisperFactory));
 
-    // We wait both tasks and we'll see that the results are interleaved
-    await Task.WhenAll(task1, task2);
+        // We wait both tasks and we'll see that the results are interleaved
+        await Task.WhenAll(task1, task2);
+    */
 
-*/
 }
 
 public class WhisperProcessorBuilder
@@ -254,6 +243,14 @@ public class WhisperProcessorBuilder
     public WhisperProcessor Build() => _factory
         .CreateBuilder()
         .WithLanguage(_language)
+        .WithLanguageDetection()
+        .WithPrintTimestamps()
+                    .WithSegmentEventHandler((segment) =>
+                    {
+                        // Do whetever you want with your segment here.
+                        Console.WriteLine($"{segment.Start}->{segment.End}: {segment.Text}");
+                    })
+
 
         //.WithLanguageDetection()
         .Build();

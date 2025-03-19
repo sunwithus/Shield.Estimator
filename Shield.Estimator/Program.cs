@@ -6,6 +6,7 @@ using Shield.Estimator.Shared.Components.EntityFrameworkCore.SqliteModel;
 using Shield.Estimator.Shared.Components.Modules._Shared;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore;
 using Shield.Estimator.Business;
+using Shield.AudioConverter;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,7 @@ builder.Services.AddDbContextFactory<SqliteDbContext>();
 
 //WhisperService, KoboldService
 builder.Services.AddBusinessServices(builder.Configuration);
+builder.Services.AddAudioConverterServices(builder.Configuration);
 
 //BackgroundService
 builder.Services.AddHostedService<AiBackgroundService>();

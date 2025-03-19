@@ -17,7 +17,7 @@ using Polly;
 using Polly.Retry;
 using Microsoft.Extensions.Options;
 using Shield.Estimator.Business.Options.WhisperOptions;
-using Shield.Estimator.Business.AudioConverterServices;
+using Shield.AudioConverter.AudioConverterServices;
 using MudBlazor;
 using System.Collections.Concurrent;
 using System.Data;
@@ -35,8 +35,6 @@ public class AiBackgroundService : BackgroundService
     private readonly AsyncRetryPolicy _retryPolicy;
 
     private readonly List<string> _ignoreRecordTypes;
-    private AudioConverterFactory _audioConverterFactory;
-
 
     private readonly IConfiguration _configuration;
     private readonly IOptions<WhisperCppOptions> _options;
@@ -60,7 +58,6 @@ public class AiBackgroundService : BackgroundService
         _kobold = KoboldService;
         _hubContext = hubContext;
         _options = options;
-        _audioConverterFactory = audioConverterFactory;
 
         _sqliteDbContext = sqliteDbContext;
         _dbContextFactory = dbContextFactory;
@@ -339,6 +336,7 @@ public class AiBackgroundService : BackgroundService
         // FFMpeg or Decoder => audio to folder + Whisper
         string audioFilePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + $"{entity.SInckey}.wav"); //string audioFilePath = Path.Combine(_configuration["AudioPathForBGService"], $"{entity.SInckey}.wav");
         if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
+
         var (recognizedText, detectedLanguage, languageCode) = await ProcessWhisper(entity, audioFilePath, ct);
         if(recognizedText == null) return;
 
@@ -460,12 +458,11 @@ public class AiBackgroundService : BackgroundService
         {
             item.CompletedKeys++;
         }
-
     }
 
     private async Task<bool> TryConvertAudio(byte[] left, byte[] right, string type, string eventCode, string path)
     {
-        var result = await DbToAudioConverter.FFMpegDecoder(left, right, type, path, _configuration);
+        bool result = await DbToAudioConverter.FFMpegDecoder(left, right, type, path, _configuration);
         return result || await DbToAudioConverter.FFMpegDecoder(left, right, eventCode, path, _configuration);
     }
 

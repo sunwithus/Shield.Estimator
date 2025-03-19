@@ -81,7 +81,7 @@
         {
             string UnicId = Guid.NewGuid().ToString();
             await LoadAudioData(UnicId);
-            await DeleteAudioFileAsync(UnicId);
+            //await DeleteAudioFileAsync(UnicId);
         }
     }
 
@@ -110,17 +110,21 @@
     private async Task LoadAudioData(string UnicId)
     {
         var path = Path.Combine(HostEnvironment.WebRootPath, "files", UnicId + ".wav");
+
+        //string TempPath = Path.GetTempPath();
+        //string TempName = Guid.NewGuid().ToString();
+        //string path = Path.Combine(TempPath, TempName + ".wav");
+
         Files.CreateDirectory(Path.GetDirectoryName(path));
         try
         {
-            
             
             if (AudioDataLeft != null) ConsoleCol.WriteLine("AudioDataLeft != null", ConsoleColor.DarkYellow);
             ConsoleCol.WriteLine("RecordType: " + RecordType, ConsoleColor.DarkYellow);
             IsAudioLoadErr = false;
             if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
             {
-                await DbToAudioConverter.UsingDecoderAsync(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+                await DbToAudioConverter.UsingDecoderAsync2(AudioDataLeft, AudioDataRight, path, RecordType, conf);
                 Console.WriteLine("UsingDecoderAsync");
                 Console.WriteLine(path.ToString());
             }

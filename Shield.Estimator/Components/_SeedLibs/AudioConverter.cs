@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Configuration;
 using FFMpegCore.Enums;
 using System.Threading.Channels;
+using FFMpegCore.Arguments;
 
 namespace Shield.Estimator.Shared.Components._SeedLibs
 {
@@ -110,6 +111,126 @@ namespace Shield.Estimator.Shared.Components._SeedLibs
             ConsoleCol.WriteLine("UsingFilesAsync success!!! outputFilePath: " + outputFilePath, ConsoleColor.Cyan);
         }
 
+        public static async Task UsingDecoderAsync2(byte[] audioDataLeft, byte[] audioDataRight, string outputFilePath, string recordType, IConfiguration conf)
+        {
+            string _procPath = Path.GetFullPath(".\\decoder\\decoder.exe");
+            string _codecPath = Path.GetFullPath(".\\suppdll");
+
+            var randomFileName = Path.GetRandomFileName();
+            string directoryName = Path.GetDirectoryName(outputFilePath)!;
+
+            if (!Directory.Exists(directoryName))
+                Directory.CreateDirectory(directoryName);
+
+            string tempBasePath = Path.Combine(directoryName, randomFileName);
+            string fileNameLeft = tempBasePath + "_left.bin";
+            string fileNameRight = tempBasePath + "_right.bin";
+            string fileNameLeftWav = tempBasePath + "_left.wav";
+            string fileNameRightWav = tempBasePath + "_right.wav";
+
+            try
+            {
+                // Записываем бинарные данные во временные файлы
+                await File.WriteAllBytesAsync(fileNameLeft, audioDataLeft);
+                await File.WriteAllBytesAsync(fileNameRight, audioDataRight ?? audioDataLeft);
+
+                // Формируем команду для декодера
+                //string decoderArgs = $"-c_dir \"{conf["PathToDecoderDll"]}\" -c \"{recordType}\" " +
+                string decoderArgs = $"-c_dir \"{_codecPath}\" -c \"{recordType}\" " +
+                                     $"-f \"{fileNameLeft}\" \"{fileNameLeftWav}\" " +
+                                     $"-r \"{fileNameRight}\" \"{fileNameRightWav}\"";
+
+                string arguments = "-c_dir \"" + _codecPath + "\" -c " + recordType + " -f \"" +
+                            fileNameLeft + "\" \"" + fileNameLeftWav + "\" -r \"" + fileNameRight + "\" \"" +
+                            fileNameRightWav + "\"";
+
+                Console.WriteLine($"Для сравнения: {decoderArgs}");
+                Console.WriteLine($"Запуск декодера: {arguments}");
+                await Cmd.RunProcess(_procPath, arguments);
+
+                // Объединяем декодированные WAV-файлы
+                if (!File.Exists(fileNameLeftWav) && !File.Exists(fileNameRightWav))
+                    throw new Exception("Декодер не создал выходные файлы");
+
+                // Читаем и объединяем аудиоданные
+                byte[] leftData = await File.ReadAllBytesAsync(fileNameLeftWav);
+                byte[] rightData = await File.ReadAllBytesAsync(fileNameRightWav);
+
+                Console.WriteLine($"Создаем объединенный WAV");
+                // Создаем объединенный WAV
+                var mergedWav = MergeWavChannels(leftData, rightData);
+                await File.WriteAllBytesAsync(outputFilePath, mergedWav);
+
+                Console.WriteLine($"Файл успешно создан: {outputFilePath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка UsingDecoderAsync2: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                // Очистка временных файлов
+                Files.DeleteFilesByPath(fileNameLeft, fileNameRight, fileNameLeftWav, fileNameRightWav);
+            }
+        }
+
+        private static byte[] MergeWavChannels(byte[] leftChannel, byte[] rightChannel)
+        {
+            const int headerSize = 44;
+
+            // Извлекаем данные без заголовков (как в оригинале)
+            var leftData = new byte[leftChannel.Length - headerSize];
+            var rightData = new byte[rightChannel.Length - headerSize];
+            Buffer.BlockCopy(leftChannel, headerSize, leftData, 0, leftData.Length);
+            Buffer.BlockCopy(rightChannel, headerSize, rightData, 0, rightData.Length);
+
+            // Создаем базовый заголовок (как в оригинале)
+            var result = new List<byte> {
+        82, 73, 70, 70, 0, 0, 0, 0, 87, 65, 86, 69, 102, 109, 116, 32, 16, 0, 0, 0,
+        1, 0, 2, 0, 64, 31, 0, 0, 0, 125, 0, 0, 4, 0, 16, 0, 100, 97, 116, 97, 0, 0, 0, 0
+    };
+
+            // Объединяем данные (исправленная версия)
+            for (int j = 0; j < leftData.Length; j += 2)
+            {
+                // Проверка границ для правого канала
+                if (j + 1 >= leftData.Length) break;
+                result.Add(leftData[j]);
+                result.Add(leftData[j + 1]);
+
+                if (j + 1 >= rightData.Length)
+                {
+                    // Добавляем тишину, если правый канал короче
+                    result.Add(0);
+                    result.Add(0);
+                }
+                else
+                {
+                    result.Add(rightData[j]);
+                    result.Add(rightData[j + 1]);
+                }
+            }
+
+            // Рассчет размеров (как в оригинале)
+            int len = result.Count - 44;
+            int len1 = result.Count - 8;
+
+            // Обновление заголовка
+            result[4] = (byte)(len1 & 0xff);
+            result[5] = (byte)((len1 >> 8) & 0xff);
+            result[6] = (byte)((len1 >> 16) & 0xff);
+            result[7] = (byte)((len1 >> 24) & 0xff);
+
+            result[40] = (byte)(len & 0xff);
+            result[41] = (byte)((len >> 8) & 0xff);
+            result[42] = (byte)((len >> 16) & 0xff);
+            result[43] = (byte)((len >> 24) & 0xff);
+
+            return result.ToArray();
+        }
+
+
         public static async Task UsingDecoderAsync(byte[] audioDataLeft, byte[] audioDataRight, string outputFilePath, string recordType, IConfiguration conf)
         {
             string rightArgument = "-filter_complex amix=inputs=2:duration=first:dropout_transition=2"; // для ffmpeg
@@ -142,6 +263,8 @@ namespace Shield.Estimator.Shared.Components._SeedLibs
                 }
 
                 string decoderCommandParams = $" -c_dir \"{conf["PathToDecoderDll"]}\" -c \"{recordType}\" -f \"{fileNameLeft}\" \"{fileNameLeftWav}\" -r \"{fileNameRight}\" \"{fileNameRightWav}\"";
+
+
                 ConsoleCol.WriteLine("decoderCommandParams: " + decoderCommandParams, ConsoleColor.Cyan);
 
                 await Cmd.RunProcess(conf["PathToDecoderExe"], decoderCommandParams);
