@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Shield.AudioConverter.Options;
 using System.Reflection;
 using FFMpegCore.Arguments;
+using System;
 
 namespace Shield.AudioConverter.AudioConverterServices.FFMpeg;
 
@@ -65,7 +66,7 @@ public class FFMpegConverter : IAudioConverter
     /// </remarks>
     public async Task<MemoryStream> ConvertFileToStreamAsync(string inputFileName)
     {
-        await _semaphore.WaitAsync();
+        //await _semaphore.WaitAsync();
         try
         {
             var outputStream = new MemoryStream();
@@ -79,7 +80,7 @@ public class FFMpegConverter : IAudioConverter
         }
         finally
         {
-            _semaphore.Release();
+            //_semaphore.Release();
         }
     }
 
@@ -96,9 +97,9 @@ public class FFMpegConverter : IAudioConverter
     /// - Для моно-аудио передавать только audioDataLeft
     /// - Для работы с необработанными данными требуется правильная настройка кодеков
     /// </remarks>
-    public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[] audioDataLeft, byte[] audioDataRight = null)
+    public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[] audioDataLeft, byte[] audioDataRight = null, string recordType = "", string eventCode = "")
     {
-        await _semaphore.WaitAsync();
+        //await _semaphore.WaitAsync();
         try
         {
             var outputStream = new MemoryStream();
@@ -117,7 +118,7 @@ public class FFMpegConverter : IAudioConverter
         }
         finally
         {
-            _semaphore.Release();
+            //_semaphore.Release();
         }
     }
 
@@ -140,13 +141,14 @@ public class FFMpegConverter : IAudioConverter
     /// </remarks>
     public async Task ConvertByteArrayToFileAsync(byte[] audioDataLeft, byte[] audioDataRight, string audioFilePath, string recordType = "", string eventCode = "")
     {
+        /*
         if (audioDataLeft == null || audioDataLeft.Length == 0)
             throw new ArgumentNullException(nameof(audioDataLeft));
 
         if (string.IsNullOrWhiteSpace(audioFilePath))
             throw new ArgumentNullException(nameof(audioFilePath));
-
-        await _semaphore.WaitAsync();
+        */
+        //await _semaphore.WaitAsync();
         try
         {
             using var audioStream = await ConvertByteArrayToStreamAsync(audioDataLeft, audioDataRight);
@@ -156,10 +158,24 @@ public class FFMpegConverter : IAudioConverter
                 audioStream.Position = 0;
                 await audioStream.CopyToAsync(fileStream);
             }
+            Console.WriteLine("FFMpeg conversion completed");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"FFMpeg conversion error: {ex.Message}");
+            //throw; // Перебрасываем исключение для обработки в вызывающем коде
         }
         finally
         {
-            _semaphore.Release();
+            if(File.Exists(audioFilePath))
+            {
+                Console.WriteLine($"{audioFilePath} Существует");
+            }
+            else
+            {
+                Console.WriteLine($"{audioFilePath} НЕЕЕЕ Существует");
+            }
+            //_semaphore.Release();
         }
     }
 
@@ -175,7 +191,7 @@ public class FFMpegConverter : IAudioConverter
         if (!File.Exists(inputFileName))
             throw new FileNotFoundException("Input file not found", inputFileName);
 
-        await _semaphore.WaitAsync();
+        //await _semaphore.WaitAsync();
         try
         {
             (int duration, int channels) = await AnalyzeAudioAsync(inputFileName);
@@ -196,7 +212,7 @@ public class FFMpegConverter : IAudioConverter
         }
         finally
         {
-            _semaphore.Release();
+            //_semaphore.Release();
         }
     }
 

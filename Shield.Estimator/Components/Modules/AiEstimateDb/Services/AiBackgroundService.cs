@@ -24,7 +24,7 @@ using System.Data;
 
 public class AiBackgroundService : BackgroundService
 {
-    private const int ProcessingDelayMs = 8_005;
+    private const int ProcessingDelayMs = 11_005;
     private const double MinimumConfidence = 0.6;
     private const int MaxWhisperOllamaGap = 2;
     

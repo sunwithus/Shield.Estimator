@@ -8,11 +8,17 @@
 @using FFMpegCore;
 
 @using Shield.Estimator.Shared.Components._SeedLibs
+@using Shield.AudioConverter.AudioConverterServices
+@using Shield.AudioConverter.AudioConverterServices.Decoder;
+@using Shield.AudioConverter.AudioConverterServices.FFMpeg;
+@using Shield.AudioConverter.AudioConverterServices.NAudio;
 
 @inject IConfiguration conf
 @inject IJSRuntime JSRuntime
 @inject IWebHostEnvironment HostEnvironment
 @inject NavigationManager NavigationManager
+
+@inject AudioConverterFactory AudioConverterFactory
 
 <style>
     #buttonsgroup {
@@ -118,15 +124,21 @@
         Files.CreateDirectory(Path.GetDirectoryName(path));
         try
         {
-            
+
             if (AudioDataLeft != null) ConsoleCol.WriteLine("AudioDataLeft != null", ConsoleColor.DarkYellow);
             ConsoleCol.WriteLine("RecordType: " + RecordType, ConsoleColor.DarkYellow);
             IsAudioLoadErr = false;
-            if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
-            {
-                await DbToAudioConverter.UsingDecoderAsync2(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+            //if (RecordType != null && conf.GetSection("AudioConverter:Codecs").Get<List<string>>().Contains(RecordType))
+            //{
+            /////
+            //await DbToAudioConverter.UsingDecoderAsync2(AudioDataLeft, AudioDataRight, path, RecordType, conf);
+            await ConvertAudioFile(path);
+
+                ////
+                //await DbToAudioConverter.UsingDecoderAsync2(AudioDataLeft, AudioDataRight, path, RecordType, conf);
                 Console.WriteLine("UsingDecoderAsync");
                 Console.WriteLine(path.ToString());
+            /*
             }
             else
             {
@@ -134,7 +146,7 @@
                 Console.WriteLine("UsingStreamsMakeStereoAsync");
 
             }
-
+            */
             string url = NavigationManager.BaseUri + "files/" + UnicId + ".wav";
             Console.WriteLine(url.ToString());
             try
@@ -159,9 +171,39 @@
             Console.WriteLine(ex.Message);
             StateHasChanged();
         }
-
-
     }
 
+    private async Task ConvertAudioFile(string audioFilePath)
+    {
+        foreach (var converterType in Enum.GetValues<ConverterType>())
+        {
+            try
+            {
+                ConsoleCol.WriteLine($"Attempting conversion with {converterType}", ConsoleColor.Cyan);
+
+                var converter = AudioConverterFactory.CreateConverter(converterType);
+                ConsoleCol.WriteLine($"converterType = {converterType}", ConsoleColor.Cyan);
+                await converter.ConvertByteArrayToFileAsync(AudioDataLeft, AudioDataRight, audioFilePath, RecordType, RecordType);
+
+                if (File.Exists(audioFilePath))
+                {
+                    ConsoleCol.WriteLine($"Conversion successful using {converterType}", ConsoleColor.Green);
+                    return;
+                }
+                else
+                {
+                    ConsoleCol.WriteLine($"Conversion with {converterType} did not produce a file", ConsoleColor.Yellow);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConsoleCol.WriteLine($"Error with {converterType}: {ex.Message}", ConsoleColor.Red);
+                // Логируем полную информацию об ошибке
+                Console.WriteLine($"Full error details: {ex}");
+            }
+            continue;
+        }
+        throw new InvalidOperationException("All audio conversions failed");
+    }
 
 }

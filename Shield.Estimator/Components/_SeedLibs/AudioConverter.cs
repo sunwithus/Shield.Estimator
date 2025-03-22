@@ -6,6 +6,7 @@ using System.Configuration;
 using FFMpegCore.Enums;
 using System.Threading.Channels;
 using FFMpegCore.Arguments;
+using Shield.AudioConverter.AudioConverterServices.Decoder;
 
 namespace Shield.Estimator.Shared.Components._SeedLibs
 {
@@ -113,8 +114,12 @@ namespace Shield.Estimator.Shared.Components._SeedLibs
 
         public static async Task UsingDecoderAsync2(byte[] audioDataLeft, byte[] audioDataRight, string outputFilePath, string recordType, IConfiguration conf)
         {
-            string _procPath = Path.GetFullPath(".\\decoder\\decoder.exe");
-            string _codecPath = Path.GetFullPath(".\\suppdll");
+            //string _procPath = Path.GetFullPath(".\\decoder\\decoder.exe");
+            //string _codecPath = Path.GetFullPath(".\\suppdll");
+
+            var assemblyLocation = Path.GetDirectoryName(typeof(DecoderConverter).Assembly.Location);
+            string _procPath = Path.Combine(assemblyLocation, "decoder", "decoder.exe");
+            string _codecPath = Path.Combine(assemblyLocation, "decoder", "suppdll");
 
             var randomFileName = Path.GetRandomFileName();
             string directoryName = Path.GetDirectoryName(outputFilePath)!;

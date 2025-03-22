@@ -24,7 +24,7 @@ public class NAudioConverter : IAudioConverter
         return await ConvertToMemoryStreamAsync(sampleProvider);
     }
 
-    public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[] audioDataLeft, byte[] audioDataRight = null)
+    public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[] audioDataLeft, byte[] audioDataRight = null, string recordType = "", string eventCode = "")
     {
         var leftFile = await CreateTempFileAsync(audioDataLeft);
         var rightFile = audioDataRight != null ? await CreateTempFileAsync(audioDataRight) : null;
@@ -61,17 +61,21 @@ public class NAudioConverter : IAudioConverter
     /// </remarks>
     public async Task ConvertByteArrayToFileAsync(byte[] audioDataLeft, byte[] audioDataRight, string audioFilePath, string recordType = "", string eventCode = "")
     {
+        /*
         if (audioDataLeft == null || audioDataLeft.Length == 0)
             throw new ArgumentNullException(nameof(audioDataLeft));
 
         if (string.IsNullOrWhiteSpace(audioFilePath))
             throw new ArgumentNullException(nameof(audioFilePath));
-
-        var leftFile = await CreateTempFileAsync(audioDataLeft);
-        var rightFile = audioDataRight != null ? await CreateTempFileAsync(audioDataRight) : null;
-
+        */
+        string leftFile = "";
+        string rightFile = "";
         try
         {
+            leftFile = await CreateTempFileAsync(audioDataLeft);
+            rightFile = audioDataRight != null ? await CreateTempFileAsync(audioDataRight) : null;
+
+
             await using (var conversionStream = await ConvertByteArrayToStreamAsync(audioDataLeft, audioDataRight))
             await using (var fileStream = new FileStream(audioFilePath,FileMode.Create,FileAccess.Write,FileShare.None,bufferSize: 4096,FileOptions.Asynchronous))
             {
@@ -79,8 +83,14 @@ public class NAudioConverter : IAudioConverter
                 await conversionStream.CopyToAsync(fileStream);
             }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"NAudio conversion error: {ex.Message}");
+            throw; // Перебрасываем исключение для обработки в вызывающем коде
+        }
         finally
         {
+            if (File.Exists(audioFilePath)) Console.WriteLine("ConvertByteArrayToFileAsync NAudio EXIST");
             File.Delete(leftFile);
             if (rightFile != null) File.Delete(rightFile);
         }
