@@ -26,12 +26,6 @@
     <MudText Typo="Typo.h5">Репликация аудио в Oracle / Postgres 🎧 => 📦</MudText>
     <MudDivider />
     <br />
-    @*
-    <MudOverlay Visible="!ReplSingleton.ReplInstance.IsStoped" LightBackground="true" Absolute="true">
-        <MudText>Процесс занят.</MudText>
-        <MudText>Идёт выполнение, подождите... @ReplSingleton.ReplInstance.ProgressExec %</MudText>
-    </MudOverlay>
-    *@
     @if (SettingsDbList != null)
     {
         <ConnectionSettings colorButton="@colorButton" OnSettingsChanged="OnSettingsChanged" SettingsDbList="@SettingsDbList" FileSettingsDb="@FileSettingsDb" />
@@ -52,40 +46,15 @@
     {
         <MudText Typo="Typo.body1" Color="@colorButton">Выберите значение "Имя источнника (Шаблон запроса)"</MudText>
     }
-    
+
     @if(isFilesLoaded)
     {
         <br />
         <MudText Typo="Typo.body1" Color="@colorButton">Файлы загружены на сервер, запись в БД началась. Со страницы можно уходить.</MudText>
-        
-        @*<MudButton OnClick="@(async () => await StartReplication())" ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="@colorButton">Пуск!</MudButton>*@
     }
     <br />
     <LogContent />
-@*
-    @if (!string.IsNullOrEmpty(message))
-    {
-        <MudSimpleTable Dense="true" FixedHeader="true" Style="height:150px;">
-            <thead>
-                <tr>
-                    <th>Выполнение:</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>
-                        @((MarkupString)message)
-                    </td>
-                </tr>
 
-            </tbody>
-        </MudSimpleTable>
-    }
-    else
-    {
-        <MudText Style="height:150px;" />
-    }
-*@
 </MudContainer>
 
 
@@ -106,7 +75,6 @@
     protected override async Task OnInitializedAsync()
     {
         SettingsDbList = await SimpleJson<SettingsDb>.LoadItemsAsync(FileSettingsDb);
-        //ReplSingleton.ReplInstance.ReplPropertyChanged += Singleton_PropertyChanged;
         StateHasChanged();
 
         //_logger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
@@ -147,7 +115,6 @@
 
         int count = 0;
         int total = filesAudio.Length;
-        //ReplSingleton.ReplInstance.IsStoped = false;
 
         try
         {
@@ -163,7 +130,6 @@
                         Console.WriteLine($"Repl => Файл обработан: {filePath}");
                         await InvokeAsync(StateHasChanged);
                         count++;
-                        //ReplSingleton.ReplInstance.ProgressExec = count * 100 / total;
                     }
                     catch (Exception ex)
                     {
@@ -183,8 +149,6 @@
         }
 
         Files.DeleteFilesByPath(filesAudio);
-        //ReplSingleton.ReplInstance.IsStoped = true;
-        //ReplSingleton.ReplInstance.ProgressExec = 0;
 
     }
 
@@ -215,8 +179,6 @@
 
     private async Task SaveEntitiesToDatabase(BaseDbContext context, SprSpeechTable speechEntry, SprSpData1Table dataEntry)
     {
-
-        //using var transaction = await context.Database.BeginTransactionAsync();
         try
         {
             context.SprSpeechTables.Add(speechEntry);
@@ -232,7 +194,6 @@
     }
     private SprSpeechTable CreateSpeechTableEntity(Parse.ParsedIdenties fileData, int durationOfWav, string codec, long maxKey, string sourceName)
     {
-        //string durationString = string.Format("+00 {0:D2}:{1:D2}:{2:D2}.000000", durationOfWav / 3600, (durationOfWav % 3600) / 60, durationOfWav % 60);
         TimeSpan durationTimeSpan = TimeSpan.FromSeconds(durationOfWav);
 
         return new SprSpeechTable

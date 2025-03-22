@@ -15,6 +15,7 @@ public class SpeechData
     public string? Lac { get; set; } = "";
     public string? Basestation { get; set; } = "";
     public int? Calltype { get; set; } = 2;
+    public string? EventCode{ get; set; }
     public byte[]? Comment { get; set; }
     public byte[]? AudioF { get; set; }
     public byte[]? AudioR { get; set; }

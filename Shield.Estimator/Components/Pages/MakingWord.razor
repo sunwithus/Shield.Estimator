@@ -79,6 +79,7 @@
                 <MudTd>@context.Belong</MudTd>
                 <MudTd>@context.Sourcename</MudTd>
                 <MudTd>@context.Deviceid</MudTd>
+                <MudTd>@context.EventCode</MudTd>
             </RowTemplate>
         </MudTable>
 
@@ -113,7 +114,7 @@
     private List<SpeechData> speechData = null;
 
     private long? Id = 0;
-    List<string> ColumnHeaders = new() { "Ключ", "Дата/время", "Длительность", "Собеседник", "Пользовательский номер", "Тип вызова", "CID", "LAC", "Базовая станция", "Принадлежность (язык оригинала)", "Имя источника (оператор)", "Устройство" };
+    List<string> ColumnHeaders = new() { "Ключ", "Дата/время", "Длительность", "Собеседник", "Пользовательский номер", "Тип вызова", "CID", "LAC", "Базовая станция", "Принадлежность (язык оригинала)", "Имя источника (оператор)", "Устройство", "Кодек" };
 
     private List<SettingsDb> SettingsDbList = null;
     private SettingsDb SettingsDb = null;
