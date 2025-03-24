@@ -48,7 +48,7 @@ namespace Shield.Estimator.Shared.Components._SeedLibs
             string rightArgument = "";
 
             if (streamRight != null)
-            {
+            { 
                 ffmpegArgs = ffmpegArgs.AddPipeInput(new StreamPipeSource(streamRight));
                 rightArgument = "-filter_complex amix=inputs=2:duration=first:dropout_transition=2";
             }

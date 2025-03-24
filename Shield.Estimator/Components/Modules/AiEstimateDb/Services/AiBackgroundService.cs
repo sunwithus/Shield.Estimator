@@ -17,21 +17,20 @@ using Polly;
 using Polly.Retry;
 using Microsoft.Extensions.Options;
 using Shield.Estimator.Business.Options.WhisperOptions;
-using Shield.AudioConverter.AudioConverterServices;
 using MudBlazor;
 using System.Collections.Concurrent;
 using System.Data;
 
+using Shield.AudioConverter.AudioConverterServices;
+
 public class AiBackgroundService : BackgroundService
 {
     private const int ProcessingDelayMs = 11_005;
-    private const double MinimumConfidence = 0.6;
+    private const double MinimumConfidence = 0.65;
     private const int MaxWhisperOllamaGap = 2;
     
-    //private readonly AiProcessingSettings _settings;
     private readonly ILogger<AiBackgroundService> _logger;
     private readonly IHubContext<TodoHub> _hubContext;
-    //private readonly AiServiceCoordinator _aiServices;
     private readonly AsyncRetryPolicy _retryPolicy;
 
     private readonly List<string> _ignoreRecordTypes;
@@ -48,7 +47,11 @@ public class AiBackgroundService : BackgroundService
     private string _preTextTranslate;
     private string _modelPathWhisperCpp;
 
-    public AiBackgroundService(ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperFasterDockerService whisperFasterService, WhisperNetService whisperNet, WhisperCppService whisperCpp, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext, IOptions<WhisperCppOptions> options, AudioConverterFactory audioConverterFactory)
+    private readonly AudioConverterFactory _audioConverter;
+
+    
+
+    public AiBackgroundService(AudioConverterFactory audioConverter, ILogger<AiBackgroundService> logger, IConfiguration configuration, WhisperFasterDockerService whisperFasterService, WhisperNetService whisperNet, WhisperCppService whisperCpp, KoboldService KoboldService, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IHubContext<TodoHub> hubContext, IOptions<WhisperCppOptions> options, AudioConverterFactory audioConverterFactory)
     {
         _logger = logger;
         _configuration = configuration;
@@ -58,6 +61,8 @@ public class AiBackgroundService : BackgroundService
         _kobold = KoboldService;
         _hubContext = hubContext;
         _options = options;
+        
+        _audioConverter = audioConverter;
 
         _sqliteDbContext = sqliteDbContext;
         _dbContextFactory = dbContextFactory;
@@ -163,7 +168,6 @@ public class AiBackgroundService : BackgroundService
                 item.ProcessingMessage = $"Ошибка при обращении к БД.";
             }
             await UpdateTodoItemStateAsync(item, ct);
-            return;
         }
     }
     private (string conString, string dbType, string scheme) GetDbConnectionInfo(TodoItem item) =>
@@ -274,7 +278,8 @@ public class AiBackgroundService : BackgroundService
             string? recordType, eventCode = string.Empty;
             (audioDataLeft, audioDataRight, recordType, eventCode) = await EFCoreQuery.GetAudioDataAsync(entity.SInckey, context);
 
-            if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return null;
+            //if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return null;
+            await ConvertByteArrayToFile(audioDataLeft, audioDataRight, audioFilePath, recordType, eventCode);
 
             (string languageCode, string detectedLanguage, double confidence) = await DetectLanguageAsync(audioFilePath);
 
@@ -288,6 +293,39 @@ public class AiBackgroundService : BackgroundService
         {
             Files.DeleteFilesByPath(audioFilePath);
         }
+    }
+
+    private async Task ConvertByteArrayToFile(byte[]? AudioDataLeft, byte[]? AudioDataRight, string audioFilePath, string RecordType, string Eventcode)
+    {
+        foreach (var converterType in Enum.GetValues<ConverterType>())
+        {
+            try
+            {
+                ConsoleCol.WriteLine($"Attempting conversion with {converterType}", ConsoleColor.Cyan);
+
+                var converter = _audioConverter.CreateConverter(converterType);
+                ConsoleCol.WriteLine($"converterType = {converterType}", ConsoleColor.Cyan);
+                await converter.ConvertByteArrayToFileAsync(AudioDataLeft, AudioDataRight, audioFilePath, RecordType, Eventcode);
+
+                if (File.Exists(audioFilePath))
+                {
+                    ConsoleCol.WriteLine($"Conversion successful using {converterType}", ConsoleColor.Green);
+                    return;
+                }
+                else
+                {
+                    ConsoleCol.WriteLine($"Conversion with {converterType} did not produce a file", ConsoleColor.Yellow);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConsoleCol.WriteLine($"Error with {converterType}: {ex.Message}", ConsoleColor.Red);
+                // Логируем полную информацию об ошибке
+                //Console.WriteLine($"Full error details: {ex}");
+            }
+            continue;
+        }
+        throw new InvalidOperationException("All audio conversions failed");
     }
 
     private async Task<(string languageCode, string detectedLanguage, double confidence)> DetectLanguageAsync(string audioFilePath)
@@ -335,7 +373,10 @@ public class AiBackgroundService : BackgroundService
 
         // FFMpeg or Decoder => audio to folder + Whisper
         string audioFilePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + $"{entity.SInckey}.wav"); //string audioFilePath = Path.Combine(_configuration["AudioPathForBGService"], $"{entity.SInckey}.wav");
-        if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
+
+        await ConvertByteArrayToFile(audioDataLeft, audioDataRight, audioFilePath, recordType, eventCode);
+        if (!File.Exists(audioFilePath)) return;
+        //if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
 
         var (recognizedText, detectedLanguage, languageCode) = await ProcessWhisper(entity, audioFilePath, ct);
         if(recognizedText == null) return;
@@ -387,6 +428,7 @@ public class AiBackgroundService : BackgroundService
             {
                 //_recognizedText = await _whisperNet.TranscribeAsync(audioFilePath, languageCode);
                 _logger.LogInformation($"Распознавание _whisperFasterDocker");
+                _logger.LogWarning($"##############");
                 recognizedText = await _whisperFasterDocker.TranscribeAsync(audioFilePath);
             }
             // Иначе - WhisperCpp Api
@@ -402,6 +444,7 @@ public class AiBackgroundService : BackgroundService
                     }
 
                     _logger.LogInformation($"Распознавание _whisperCpp");
+                    _logger.LogWarning($"##############");
                     recognizedText = await _whisperCpp.TranscribeAsync(audioFilePath);
                 }
                 catch

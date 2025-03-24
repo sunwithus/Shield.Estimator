@@ -38,8 +38,8 @@
     {
         try
         {
-            //var logFilePath = Path.Combine(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
-            var logFilePath = @".\Logs\ReplicatorLog.txt";
+            var logFilePath = Path.Combine(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
+            //var logFilePath = @".\Logs\ReplicatorLog.txt"; //корневая директория проекта
             if (File.Exists(logFilePath))
             {
                 var logLines = await File.ReadAllLinesAsync(logFilePath);

@@ -35,8 +35,7 @@ public class DbContextFactory : IDbContextFactory
             })
             .EnableDetailedErrors(true)
             .EnableSensitiveDataLogging(false)
-            .LogTo(Console.WriteLine, LogLevel.Information)
-            .EnableSensitiveDataLogging()
+            //.LogTo(Console.WriteLine, LogLevel.Information)
             .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
 
         var context = new OracleDbContext(optionsBuilder.Options/*, scheme*/);

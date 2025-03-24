@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Shield.Estimator.Shared.Components.Modules._Shared;
 using Shield.Estimator.Shared.Components.EntityFrameworkCore.Sprutora;
 using Shield.Estimator.Business.Logger;
+using Shield.AudioConverter.AudioConverterServices;
 
 using Polly;
 using Polly.Retry;
@@ -18,21 +19,21 @@ public class ReplBackgroundService : BackgroundService
 {
     private readonly IConfiguration _configuration;
     private FileLogger _fileLogger;
-    private LoggerToFile _logToFile;
     private readonly IHubContext<ReplicatorHub> _hubContext;
     private readonly IDbContextFactory _dbContextFactory;
     private readonly AsyncRetryPolicy _retryPolicy;
+    private readonly AudioConverterFactory _audioConverter;
 
-
-    public ReplBackgroundService(IDbContextFactory dbContextFactory, IConfiguration configuration, IHubContext<ReplicatorHub> hubContext)
+    public ReplBackgroundService(AudioConverterFactory audioConverter, IDbContextFactory dbContextFactory, IConfiguration configuration, IHubContext<ReplicatorHub> hubContext)
     {
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
         _hubContext = hubContext;
-        _fileLogger=new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
-        _logToFile = new LoggerToFile(@".\Logs\ReplicatorLog.txt");
+        _fileLogger = new FileLogger(Path.Combine(AppContext.BaseDirectory, "Logs/replicator.log"));
         //Эта политика повторяет операцию до N раз с выдержкой, 1,2,3... секунд
-        _retryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(4, retryAttempt => TimeSpan.FromSeconds(retryAttempt));
+        _retryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(2, retryAttempt => TimeSpan.FromSeconds(retryAttempt));
+        _audioConverter = audioConverter;
+
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -40,41 +41,39 @@ public class ReplBackgroundService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             // Задержка между циклами
-            await Task.Delay(TimeSpan.FromSeconds(8), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(11), stoppingToken);
             try
             {
-                await CheckFilesToReplicate(stoppingToken); 
+                await ProcessJsonFiles(stoppingToken); 
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Ошибка в ReplBackgroundService: {ex.Message}");
                 _fileLogger.Log($"Ошибка в ReplBackgroundService: {ex.Message}");
-                await _logToFile.AddLogMessage($"Ошибка в ReplBackgroundService: {ex.Message}");
             }
         }
     }
 
-    private async Task CheckFilesToReplicate(CancellationToken cancellationToken) 
+    private async Task ProcessJsonFiles(CancellationToken cancellationToken) 
     {
         string pathToAudio = _configuration["AudioPathForReplicator"];
 
         if (Directory.Exists(pathToAudio))
         {
-            var JsonFiles = Directory.EnumerateFiles(pathToAudio, "*.json");
-            if (!JsonFiles.Any())
+            var jsonFiles = Directory.EnumerateFiles(pathToAudio, "*.json").OrderBy(f => f);
+            if (!jsonFiles.Any())
             {
                 //Console.WriteLine("BackGroung Repl => Нет json файлов для обработки.");
                 return;
             }
-
-            foreach (var file in JsonFiles) 
+          
+            foreach (var file in jsonFiles) 
             {
-                var json = await File.ReadAllTextAsync(file);
-                JsonReplicatorQueue paramsRepl = JsonSerializer.Deserialize<JsonReplicatorQueue>(json);
+                var jsonContent = await File.ReadAllTextAsync(file);
+                JsonReplicatorQueue paramsRepl = JsonSerializer.Deserialize<JsonReplicatorQueue>(jsonContent);
                 
-                await ReplicateAudioFromDirectory(paramsRepl, cancellationToken);
-                await Task.Delay(800, cancellationToken);
-
+                await ProcessAudioFiles(paramsRepl, cancellationToken);
+                await Task.Delay(500, cancellationToken); // пауза перед удалением директории и json
                 Files.DeleteDirectory(paramsRepl.FolderToSaveTempAudio);
                 Files.DeleteFilesByPath(file);
             }
@@ -86,64 +85,53 @@ public class ReplBackgroundService : BackgroundService
         }
     }
 
-    private async Task ReplicateAudioFromDirectory(JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
+    private async Task ProcessAudioFiles(JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
     {
 
-        var filesAudio = Directory.EnumerateFiles(paramsRepl.FolderToSaveTempAudio);
+        var audioFiles = Directory.EnumerateFiles(paramsRepl.FolderToSaveTempAudio);
         
-        if (!filesAudio.Any())
-        {
-            Console.WriteLine("BackGroung Repl => Нет аудио файлов для репликации.");
-            return;
-        }
-        int count = 0;
+        if (!audioFiles.Any()) return;
+        int processedCount = 0;
 
-        foreach (var filePath in filesAudio)
+        foreach (var filePath in audioFiles)
         {
-            try
+            var success = await TryProcessAudioFile(filePath, paramsRepl, cancellationToken);
+            if (success)
             {
-                await _retryPolicy.ExecuteAsync(async () =>
-                {
-                    await ProcessSingleAudio(filePath, paramsRepl, cancellationToken);
-                    Console.WriteLine($"BackGroung Repl => Файл обработан: {filePath}");
-                    count++;
-                    //File.Delete(filePath);
-                });
-            }
-            catch (OperationCanceledException ex)
-            {
-                Console.WriteLine($"BackGroung Repl OperationCanceledException => Ошибка при обработке файла {filePath}: {ex.Message}");
-                _fileLogger.Log($"BackGroung Repl OperationCanceledException => Ошибка при обработке файла {filePath}: {ex.Message}");
-                await _logToFile.AddLogMessage($"Ошибка в ReplBackgroundService OperationCanceledException: {ex.Message}");
-                await _hubContext.Clients.All.SendAsync("ReceiveMessage", $"❌ OperationCanceledException Ошибка при обработке файла {filePath}: {ex.Message}", cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                ConsoleCol.WriteLine($"BackGroung Repl => Ошибка при обработке файла {filePath}: {ex.Message}", ConsoleColor.Red);
-                Console.WriteLine($"paramsRepl:");
-                Console.WriteLine(paramsRepl.DbConnectionSettings);
-                Console.WriteLine(paramsRepl.DbType);
-                Console.WriteLine(paramsRepl.Scheme);
-                _fileLogger.Log($"BackGroung Repl => Ошибка при обработке файла {filePath}: {ex.Message}");
-                await _hubContext.Clients.All.SendAsync("ReceiveMessage", $"❌ Ошибка при обработке файла {filePath}: {ex.Message}", cancellationToken);
-                //throw;
+                Console.WriteLine($"{processedCount} / {audioFiles.Count()} => OK. File: {filePath} ");
+                processedCount++;
             }
         }
-        _fileLogger.Log($"Выполнено {count}/{filesAudio.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
+        _fileLogger.Log($"Выполнено {processedCount}/{audioFiles.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
+    }
 
-        await _logToFile.AddLogMessage($"Выполнено {count}/{filesAudio.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
+    private async Task<bool> TryProcessAudioFile(string filePath, JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _retryPolicy.ExecuteAsync(async () =>
+            {
+                await ProcessSingleAudio(filePath, paramsRepl, cancellationToken);
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _fileLogger.Log($"Error processing audio file {filePath} => {ex.Message}");
+            await _hubContext.Clients.All.SendAsync($"Error processing file {filePath}: {ex.Message}", cancellationToken);
+            return false;
+        }
     }
 
     private async Task ProcessSingleAudio(string filePath, JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
     {
 
-
-        var (durationOfWav, audioDataLeft, audioDataRight) = await AudioToDbConverter.FFmpegStream(filePath, _configuration["PathToFFmpegExeForReplicator"]);
+        var (durationOfWav, audioDataLeft, audioDataRight) = await ConvertAudioFileToByteArray(filePath);
 
         Parse.ParsedIdenties fileData = Parse.FormFileName(filePath); //если не удалось, возвращает {DateTime.Now, "", "", "", 2}
         string isIdentificators = (fileData.Talker == "" && fileData.Caller == "" && fileData.IMEI == "") ? "✔️ без идентификаторов" : "✅ с идентификаторами";
 
-        // Создание талиц записи
+        // Создание таблиц записи
         string codec = "PCMA";
 
         try
@@ -162,6 +150,29 @@ public class ReplBackgroundService : BackgroundService
             ConsoleCol.WriteLine($"Repl_SaveEntitiesToDatabase = > {ex.Message}", ConsoleColor.Red);
             ConsoleCol.WriteLine($"paramsRepl = > {paramsRepl.ToString()}", ConsoleColor.DarkRed);
         }
+    }
+
+    private async Task<(int, byte[]?, byte[]?)> ConvertAudioFileToByteArray(string audioFilePath)
+    {
+        foreach (var converterType in Enum.GetValues<ConverterType>())
+        {
+            try
+            {
+                var converter = _audioConverter.CreateConverter(converterType);
+                ConsoleCol.WriteLine($"converterType = {converterType}", ConsoleColor.Cyan);
+                return await converter.ConvertFileToByteArrayAsync(audioFilePath);
+            }
+            catch (Exception ex)
+            {
+                ConsoleCol.WriteLine("", ConsoleColor.Red);
+                ConsoleCol.WriteLine($"Error with {audioFilePath}", ConsoleColor.Red);
+                ConsoleCol.WriteLine($"Error with {converterType}: {ex.Message}", ConsoleColor.Red);
+                // Логируем полную информацию об ошибке
+                //Console.WriteLine($"Full error details: {ex}");
+            }
+            continue;
+        }
+        throw new InvalidOperationException("All audio conversions failed");
     }
 
     private async Task SaveEntitiesToDatabase(BaseDbContext context, SprSpeechTable speechEntry, SprSpData1Table dataEntry, CancellationToken cancellationToken)

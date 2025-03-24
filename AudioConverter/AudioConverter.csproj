@@ -30,14 +30,16 @@
 		<Content Include="decoder\**" CopyToOutputDirectory="PreserveNewest">
 			<Link>decoder\%(RecursiveDir)%(Filename)%(Extension)</Link>
 		</Content>
-		<Content Include="suppdll\**" CopyToOutputDirectory="PreserveNewest">
-			<Link>suppdll\%(RecursiveDir)%(Filename)%(Extension)</Link>
-		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Compile Remove="suppdll\**" />
+	  <EmbeddedResource Remove="suppdll\**" />
+	  <None Remove="suppdll\**" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<Folder Include="decoder\" />
-		<Folder Include="suppdll\" />
 	</ItemGroup>
 
 </Project>

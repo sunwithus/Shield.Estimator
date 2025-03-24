@@ -3,6 +3,7 @@ using NAudio.Wave.SampleProviders;
 using Shield.AudioConverter.Options;
 using Microsoft.Extensions.Options;
 using System.Threading;
+using NAudio.Codecs;
 
 namespace Shield.AudioConverter.AudioConverterServices.NAudio;
 
@@ -41,6 +42,7 @@ public class NAudioConverter : IAudioConverter
         }
     }
 
+
     /// <summary>
     /// Конвертирует RAW аудио данные из байтовых массивов в аудиофайл и сохраняет по указанному пути
     /// </summary>
@@ -61,27 +63,29 @@ public class NAudioConverter : IAudioConverter
     /// </remarks>
     public async Task ConvertByteArrayToFileAsync(byte[] audioDataLeft, byte[] audioDataRight, string audioFilePath, string recordType = "", string eventCode = "")
     {
-        /*
+        
         if (audioDataLeft == null || audioDataLeft.Length == 0)
             throw new ArgumentNullException(nameof(audioDataLeft));
 
         if (string.IsNullOrWhiteSpace(audioFilePath))
             throw new ArgumentNullException(nameof(audioFilePath));
-        */
-        string leftFile = "";
-        string rightFile = "";
+
         try
         {
-            leftFile = await CreateTempFileAsync(audioDataLeft);
-            rightFile = audioDataRight != null ? await CreateTempFileAsync(audioDataRight) : null;
+            // Конвертируем PCMA в PCM
+            var pcmLeft = ConvertPcmaToPcm(audioDataLeft);
+            var pcmRight = audioDataRight != null ? ConvertPcmaToPcm(audioDataRight) : null;
+
+            // Создаем временные WAV файлы с правильным заголовком
+            var leftFile = await CreateTempWavFileAsync(pcmLeft);
+            var rightFile = pcmRight != null ? await CreateTempWavFileAsync(pcmRight) : null;
 
 
-            await using (var conversionStream = await ConvertByteArrayToStreamAsync(audioDataLeft, audioDataRight))
-            await using (var fileStream = new FileStream(audioFilePath,FileMode.Create,FileAccess.Write,FileShare.None,bufferSize: 4096,FileOptions.Asynchronous))
-            {
-                conversionStream.Position = 0;
-                await conversionStream.CopyToAsync(fileStream);
-            }
+            using var audioStream = await ConvertByteArrayToStreamAsync(pcmLeft, pcmRight);
+
+            await SaveStreamToFileAsync(audioStream, audioFilePath);
+
+            Console.WriteLine("NAudio conversion completed");
         }
         catch (Exception ex)
         {
@@ -90,9 +94,14 @@ public class NAudioConverter : IAudioConverter
         }
         finally
         {
-            if (File.Exists(audioFilePath)) Console.WriteLine("ConvertByteArrayToFileAsync NAudio EXIST");
-            File.Delete(leftFile);
-            if (rightFile != null) File.Delete(rightFile);
+            if (File.Exists(audioFilePath))
+            {
+                Console.WriteLine($"{audioFilePath} Существует");
+            }
+            else
+            {
+                Console.WriteLine($"{audioFilePath} НЕ Существует");
+            }
         }
     }
 
@@ -121,6 +130,38 @@ public class NAudioConverter : IAudioConverter
         }
         finally
         {
+        }
+    }
+
+    private async Task SaveStreamToFileAsync(Stream audioStream, string filePath)
+    {
+        // Создаем директорию, если не существует
+        var directory = Path.GetDirectoryName(filePath);
+        if (!Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        // Сбрасываем позицию потока перед чтением
+        audioStream.Seek(0, SeekOrigin.Begin);
+
+        // Записываем поток в файл
+        await using (var fileStream = new FileStream(
+            filePath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize: 4096,
+            useAsync: true))
+        {
+            await audioStream.CopyToAsync(fileStream);
+            await fileStream.FlushAsync();
+        }
+
+        // Дополнительная проверка записи
+        if (new FileInfo(filePath).Length == 0)
+        {
+            throw new InvalidOperationException("File write failed - empty output");
         }
     }
 
@@ -165,10 +206,15 @@ public class NAudioConverter : IAudioConverter
 
     private ISampleProvider CreateSampleProviderFromFiles(string leftFile, string rightFile)
     {
-        var leftChannel = new AudioFileReader(leftFile).ToSampleProvider();
-        if (rightFile == null) return leftChannel;
+        var leftReader = new WaveFileReader(leftFile);
+        var leftChannel = leftReader.ToSampleProvider();
 
-        var rightChannel = new AudioFileReader(rightFile).ToSampleProvider();
+        if (rightFile == null)
+            return leftChannel;
+
+        var rightReader = new WaveFileReader(rightFile);
+        var rightChannel = rightReader.ToSampleProvider();
+
         return new MultiplexingSampleProvider(new[] { leftChannel, rightChannel }, 2);
     }
 
@@ -189,8 +235,45 @@ public class NAudioConverter : IAudioConverter
         if (!Directory.Exists(_tempDirectory))
             Directory.CreateDirectory(_tempDirectory);
 
-        var tempFile = Path.Combine(_tempDirectory, $"{Guid.NewGuid()}.tmp");
+        var tempFile = Path.Combine(_tempDirectory, $"{Guid.NewGuid()}.wav");
         await File.WriteAllBytesAsync(tempFile, data);
+
+        return tempFile;
+    }
+
+    private async Task<string> CreateTempFileAsync(byte[] data, WaveFormat format)
+    {
+        if (!Directory.Exists(_tempDirectory))
+            Directory.CreateDirectory(_tempDirectory);
+
+        var tempFile = Path.Combine(_tempDirectory, $"{Guid.NewGuid()}.wav");
+        using (var writer = new WaveFileWriter(tempFile, format))
+        {
+            await writer.WriteAsync(data, 0, data.Length);
+        }
+        return tempFile;
+    }
+
+    private byte[] ConvertPcmaToPcm(byte[] pcmaData)
+    {
+        var pcm = new byte[pcmaData.Length * 2];
+        for (int i = 0; i < pcmaData.Length; i++)
+        {
+            short sample = ALawDecoder.ALawToLinearSample(pcmaData[i]);
+            Buffer.BlockCopy(BitConverter.GetBytes(sample), 0, pcm, i * 2, 2);
+        }
+        return pcm;
+    }
+
+    private async Task<string> CreateTempWavFileAsync(byte[] pcmData)
+    {
+        var format = new WaveFormat(8000, 16, 1); // Укажите корректные параметры
+        var tempFile = Path.Combine(_tempDirectory, $"{Guid.NewGuid()}.wav");
+
+        using (var writer = new WaveFileWriter(tempFile, format))
+        {
+            await writer.WriteAsync(pcmData, 0, pcmData.Length);
+        }
         return tempFile;
     }
 }

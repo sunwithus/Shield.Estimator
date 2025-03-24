@@ -1,5 +1,5 @@
 ﻿//ReplSingleton.cs
-
+//не используется
 using System.ComponentModel;
 
 namespace Shield.Estimator.Shared.Components.Modules.Replicator

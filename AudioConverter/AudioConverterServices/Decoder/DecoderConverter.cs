@@ -24,27 +24,23 @@ public class DecoderConverter : IAudioConverter
         };
 
     private readonly string _tempDirectory = Path.Combine(Path.GetTempPath(), "tempDecoder");
-    private static readonly SemaphoreSlim _semaphore2 = new SemaphoreSlim(1, 1);
+    private static readonly SemaphoreSlim _semaphoreDecoder = new (1, 1);
+    private const int WavHeaderSize = 44;
 
     public DecoderConverter(IOptions<AudioConverterOptions> options)
     {
         var assemblyLocation = Path.GetDirectoryName(typeof(DecoderConverter).Assembly.Location);
         _decoderPath = Path.Combine(assemblyLocation, "decoder", "decoder.exe");
         _codecPath = Path.Combine(assemblyLocation, "decoder", "suppdll");
-        if(!Directory.Exists(_tempDirectory))
-        {
-            Directory.CreateDirectory(_tempDirectory);
-        }
+        Directory.CreateDirectory(_tempDirectory);
     }
 
     public async Task<MemoryStream> ConvertFileToStreamAsync(string inputFileName)
     {
-        //await _semaphore2.WaitAsync();
         var tempOutputLeft = GetTempFilePath(".wav");
         var tempOutputRight = GetTempFilePath(".wav");
         try
         {
-
             await RunDecoderAsync(
                 eventCode: "PCMA", // Default codec
                 inputFileLeft: inputFileName,
@@ -55,40 +51,32 @@ public class DecoderConverter : IAudioConverter
 
             return await FileToMemoryStreamAsync(tempOutputLeft);
         }
+        catch(Exception ex)
+        {
+            Console.WriteLine("Error ConvertFileToStreamAsync => " + ex.Message);
+            throw;
+        }
         finally
         {
-            if (File.Exists(tempOutputRight)) File.Delete(tempOutputRight);
-            //_semaphore2.Release();
+            Files.DeleteFilesByPath(inputFileName, tempOutputLeft, tempOutputRight);
         }
     }
 
     public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[]? audioDataLeft, byte[]? audioDataRight = null, string recordType = "", string eventCode = "")
     {
-        //await _semaphore2.WaitAsync();
+        string tempFilePath = Path.GetTempFileName();
         try
         {
-            
-            var tempInputLeft = await WriteTempFileAsync(audioDataLeft, "_left.bin");
-            var tempInputRight = audioDataRight != null
-                ? await WriteTempFileAsync(audioDataRight, "_right.bin")
-                : tempInputLeft;
-            var tempOutputLeft = GetTempFilePath(".wav");
-            var tempOutputRight = GetTempFilePath(".wav");
-
-            await RunDecoderAsync(
-                eventCode: string.IsNullOrEmpty(eventCode) ? "PCMA" : eventCode,
-                inputFileLeft: tempInputLeft,
-                outputFileLeft: tempOutputLeft,
-                inputFileRight: tempInputRight,
-                outputFileRight: tempOutputRight);
-
-            // TODO SUM both strims (now is one)
-            return await FileToMemoryStreamAsync(tempOutputLeft);
+            await ConvertByteArrayToFileAsync(audioDataLeft, audioDataRight, tempFilePath, recordType, eventCode);
+            using var fileStream = new FileStream(tempFilePath, FileMode.Open, FileAccess.Read);
+            var result = new MemoryStream();
+            await fileStream.CopyToAsync(result);
+            result.Position = 0;
+            return result;
         }
         finally
         {
-            //if (File.Exists(tempOutputRight)) File.Delete(tempOutputRight);
-            //_semaphore2.Release();
+            Files.DeleteFilesByPath(tempFilePath);
         }
     }
 
@@ -97,23 +85,17 @@ public class DecoderConverter : IAudioConverter
         if (audioDataLeft == null) throw new ArgumentNullException(nameof(audioDataLeft));
         if (!_codecs.Contains(eventCode)) return;
 
-        // Файлы байтового потока
+        // Записываем бинарные данные во временные файлы (input)
         string? tempInputLeft = await WriteTempFileAsync(audioDataLeft, "_left.bin");
-        string? tempInputRight = null;
-        if (audioDataRight?.Length > 0) tempInputRight = await WriteTempFileAsync(audioDataRight, "_right.bin");
+        string? tempInputRight = audioDataRight?.Length > 0 ? await WriteTempFileAsync(audioDataRight, "_right.bin") : null;
 
-        // Файлы аудио
+        // Файлы аудио (обязательно 2 даже для одного канала)
         string? tempOutputLeft = GetTempFilePath("_left.wav");
         string? tempOutputRight = GetTempFilePath("_right.wav");
 
-        //await _semaphore2.WaitAsync();
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(audioFilePath)!);
-
-            // Записываем бинарные данные во временные файлы (input)
-            await File.WriteAllBytesAsync(tempInputLeft, audioDataLeft);
-            if(audioDataRight?.Length > 0) await File.WriteAllBytesAsync(tempInputRight, audioDataRight);
 
             //Записываем выходные аудиофайлы
             await RunDecoderAsync(
@@ -128,14 +110,11 @@ public class DecoderConverter : IAudioConverter
                 throw new Exception("Декодер не создал выходные файлы");
 
             // Читаем и объединяем аудиоданные
-            Console.WriteLine($"Создаем объединенный WAV");
             byte[] leftData = await File.ReadAllBytesAsync(tempOutputLeft);
-            byte[] rightData = null;
             if (audioDataRight?.Length > 0)
             {
-                rightData = await File.ReadAllBytesAsync(tempOutputRight);
-                // Создаем объединенный WAV
-                var mergedWav = MergeWavChannels(leftData, rightData);
+                byte[] rightData = await File.ReadAllBytesAsync(tempOutputRight);
+                var mergedWav = MergeWavChannels(leftData, rightData); // Создаем объединенный WAV
                 await File.WriteAllBytesAsync(audioFilePath, mergedWav);
             }
             else
@@ -153,38 +132,38 @@ public class DecoderConverter : IAudioConverter
         }
         finally
         {
-            //Files.DeleteFilesByPath(tempInputLeft, tempInputRight, tempOutputLeft, tempOutputRight);
-            //_semaphore2.Release();
+            Files.DeleteFilesByPath(tempInputLeft, tempInputRight, tempOutputLeft, tempOutputRight);
         }
     }
 
     public async Task<(int Duration, byte[] Left, byte[] Right)> ConvertFileToByteArrayAsync(string inputFileName)
     {
-        //await _semaphore2.WaitAsync();
+        var tempOutputLeft = GetTempFilePath(".wav");
+        var tempOutputRight = GetTempFilePath(".wav");
         try
         {
-            var tempOutputLeft = GetTempFilePath(".wav");
-            var tempOutputRight = GetTempFilePath(".wav");
-
             await RunDecoderAsync(
                 eventCode: "PCMA",
                 inputFileLeft: inputFileName,
                 outputFileLeft: tempOutputLeft,
                 outputFileRight: tempOutputRight,
-                inputFileRight: inputFileName
+                inputFileRight: null
             );
 
-            var duration = await GetAudioDurationAsync(inputFileName);
+            (var duration, var channels) = await AudioInfo.AnalyzeAudioAsync(inputFileName);//GetAudioDurationAsync(inputFileName);
 
-
-            var leftData = await ReadTempFileAsync(tempOutputLeft);
-            var rightData = File.Exists(tempOutputRight) ? await ReadTempFileAsync(tempOutputRight) : null;
+            byte[]? leftData = await ReadTempFileAsync(tempOutputLeft);
+            byte[]? rightData = null;
+            if (channels > 1)
+            {
+                rightData = await ReadTempFileAsync(tempOutputLeft);
+            }
 
             return (duration, leftData, rightData);
         }
         finally
         {
-            //_semaphore2.Release();
+            Files.DeleteFilesByPath(inputFileName, tempOutputLeft, tempOutputRight);
         }
     }
 
@@ -196,39 +175,47 @@ public class DecoderConverter : IAudioConverter
         string outputFileRight
         )
     {
-        string arguments = $"-c_dir \"{_codecPath}\" -c \"{eventCode}\" -f \"{inputFileLeft}\" \"{outputFileLeft}\" -r \"{inputFileLeft}\" \"{outputFileRight}\"";
-
-        if (inputFileRight != null)
-            arguments = $"-c_dir \"{_codecPath}\" -c \"{eventCode}\" -f \"{inputFileLeft}\" \"{outputFileLeft}\" -r \"{inputFileRight}\" \"{outputFileRight}\"";
-
-
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
+        await _semaphoreDecoder.WaitAsync();
+        try
         {
-            FileName = _decoderPath,
-            Arguments = arguments,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true
-        };
+            string arguments = $"-c_dir \"{_codecPath}\" -c \"{eventCode}\" -f \"{inputFileLeft}\" \"{outputFileLeft}\" -r \"{inputFileLeft}\" \"{outputFileRight}\"";
 
-        var tcs = new TaskCompletionSource<bool>();
-        process.EnableRaisingEvents = true; // Включить события завершения
-        process.Exited += (s, e) => tcs.SetResult(true);
+            if (inputFileRight != null)
+                arguments = $"-c_dir \"{_codecPath}\" -c \"{eventCode}\" -f \"{inputFileLeft}\" \"{outputFileLeft}\" -r \"{inputFileRight}\" \"{outputFileRight}\"";
 
-        Console.WriteLine(arguments);
 
-        process.Start();
-        // Начать асинхронное чтение ошибок и вывода, чтобы избежать блокировки
-        string errorOutput = await process.StandardError.ReadToEndAsync();
-        string standardOutput = await process.StandardOutput.ReadToEndAsync();
-        
-        await tcs.Task; // Ожидание завершения процесса
-        Console.WriteLine("RunDecoderAsync is FINISHED!!!");
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _decoderPath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
 
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"Decoder failed: {await process.StandardError.ReadToEndAsync()}");
+            var tcs = new TaskCompletionSource<bool>();
+            process.EnableRaisingEvents = true; // Включить события завершения
+            process.Exited += (s, e) => tcs.SetResult(true);
+
+            Console.WriteLine(arguments);
+
+            process.Start();
+            // Начать асинхронное чтение ошибок и вывода, чтобы избежать блокировки
+            string errorOutput = await process.StandardError.ReadToEndAsync();
+            string standardOutput = await process.StandardOutput.ReadToEndAsync();
+
+            await tcs.Task; // Ожидание завершения процесса
+            Console.WriteLine("RunDecoderAsync is FINISHED!!!");
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"Decoder failed: {await process.StandardError.ReadToEndAsync()}");
+        }
+        finally
+        {
+            _semaphoreDecoder.Release();
+        }
     }
 
     private async Task<byte[]> ReadTempFileAsync(string path)
@@ -260,15 +247,6 @@ public class DecoderConverter : IAudioConverter
         return ms;
     }
 
-    private async Task<int> GetAudioDurationAsync(string filePath)
-    {
-        var mediaInfo = await FFProbe.AnalyseAsync(filePath);
-        int duration = (int)(mediaInfo.PrimaryAudioStream?.Duration.TotalSeconds ?? 0);
-        int channels = mediaInfo.PrimaryAudioStream?.Channels ?? 0;
-
-        return duration; // Заглушка для примера
-    }
-
     private string GetTempFilePath(string extension)
     {
         return Path.Combine(_tempDirectory, $"{Guid.NewGuid()}{extension}");
@@ -276,7 +254,7 @@ public class DecoderConverter : IAudioConverter
 
     private static byte[] MergeWavChannels(byte[] leftChannel, byte[] rightChannel)
     {
-        const int headerSize = 44;
+        const int headerSize = WavHeaderSize; // 44
 
         // Извлекаем данные без заголовков (как в оригинале)
         var leftData = new byte[leftChannel.Length - headerSize];

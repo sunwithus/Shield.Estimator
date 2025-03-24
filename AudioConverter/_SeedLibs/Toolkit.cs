@@ -112,28 +112,70 @@ public class Cmd
 public class FileLogger
 {
     private readonly string _filePath;
+    private readonly int _maxLines;
+    private readonly object _lockObj = new object();
+    private bool _disposed;
 
-    public FileLogger(string filePath)
+    public FileLogger(string filePath, int maxLines = 800)
     {
-        _filePath = filePath;
+        _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
+        _maxLines = maxLines > 0 ? maxLines : throw new ArgumentException("Max lines must be greater than 0", nameof(maxLines));
         Files.CreateDirectory(Path.GetDirectoryName(_filePath));
-        if(!File.Exists(_filePath))File.Create(_filePath);
+        InitializeFile();
+    }
+
+    private void InitializeFile()
+    {
+        lock (_lockObj)
+        {
+            if (!File.Exists(_filePath))
+            {
+                using (File.Create(_filePath)) { }
+            }
+            else
+            {
+                TruncateFileIfNeeded(File.ReadAllLines(_filePath).ToList());
+            }
+        }
+    }
+    private void TruncateFileIfNeeded(List<string> lines)
+    {
+        if (lines.Count >= _maxLines)
+        {
+            int removeCount = lines.Count - _maxLines + 1;
+            lines.RemoveRange(0, removeCount);
+        }
     }
 
     public void Log(string message)
     {
+        if (string.IsNullOrEmpty(message)) return;
+
         var logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}";
-        var maxLines = 800; // Максимальное количество строк
-        var lines = File.ReadAllLines(_filePath);
-        var newLines = new List<string>(lines);
 
-        if (newLines.Count >= maxLines)
+        lock (_lockObj)
         {
-            newLines.RemoveAt(0); // Удалить самую старую строку
-        }
+            if (_disposed) return;
 
-        newLines.Add(logEntry);
-        File.WriteAllLines(_filePath, newLines);
+            try
+            {
+                var lines = File.ReadAllLines(_filePath).ToList();
+                lines.Add(logEntry);
+                TruncateFileIfNeeded(lines);
+                File.WriteAllLines(_filePath, lines);
+            }
+            catch (Exception ex)
+            {
+                throw new IOException("Failed to write log entry", ex);
+            }
+        }
+    }
+    public void Dispose()
+    {
+        lock (_lockObj)
+        {
+            _disposed = true;
+        }
     }
 }
 
