@@ -182,9 +182,13 @@ public class AiBackgroundService : BackgroundService
     }
     private async Task HandleNoResults(TodoItem item, CancellationToken ct)
     {
-        item.ProcessingMessage = item.IsCyclic
-            ? $"Обработано 0/0. Ожидание повторного запуска."
-            : "Нет данных для обработки. Завершено.";
+        item.ProcessingMessage = $"Нет данных для обработки. Ожидание повторного запуска.";
+        if (!item.IsCyclic)
+        {
+            item.IsRunPressed = false;
+            item.IsStopPressed = true;
+            item.ProcessingMessage = "Нет данных для обработки. Завершено.";
+        }
 
         await UpdateTodoItemStateAsync(item, ct);
     }
@@ -378,8 +382,8 @@ public class AiBackgroundService : BackgroundService
         if (!File.Exists(audioFilePath)) return;
         //if (!await TryConvertAudio(audioDataLeft, audioDataRight, recordType, eventCode, audioFilePath)) return;
 
-        var (recognizedText, detectedLanguage, languageCode) = await ProcessWhisper(entity, audioFilePath, ct);
-        if(recognizedText == null) return;
+        var (recognizedText, detectedLanguage, languageCode) = await ProcessWhisper(entity, audioFilePath, ct); //внутри метода удаляем файл audioFilePath
+        if (recognizedText == null) return;
 
         _logger.LogInformation(recognizedText);
 
@@ -396,7 +400,7 @@ public class AiBackgroundService : BackgroundService
         {
             nnn--;
             await Task.Delay(5000, ct);
-            ConsoleCol.WriteLine($"Delay is done. OLLAMA / WHISPER => {item.CompletedKeys}/{item.ProcessedWhisper}", ConsoleColor.Yellow);
+            ConsoleCol.WriteLine($"Delay is done. AI / WHISPER => {item.CompletedKeys}/{item.ProcessedWhisper}", ConsoleColor.Yellow);
             ConsoleCol.WriteLine($"Wait until nnn == 0. Current nnn => {nnn}", ConsoleColor.Yellow);
             _logger.LogWarning("Ollama / Whisper => " + item.CompletedKeys + " / " + item.ProcessedWhisper);
             if (nnn <= 0)
@@ -438,12 +442,12 @@ public class AiBackgroundService : BackgroundService
                 {
                     if (_modelPathWhisperCpp != modelPath)
                     {
-                        _logger.LogInformation($"Загрузка модели {modelPath}");
+                        _logger.LogInformation($"\nЗагрузка модели {modelPath}");
                         await _whisperCpp.LoadModelAsync(modelPath);
                         _modelPathWhisperCpp = modelPath;
                     }
 
-                    _logger.LogInformation($"Распознавание _whisperCpp");
+                    _logger.LogInformation($"\nРаспознавание _whisperCpp");
                     _logger.LogWarning($"##############");
                     recognizedText = await _whisperCpp.TranscribeAsync(audioFilePath);
                 }
@@ -503,12 +507,6 @@ public class AiBackgroundService : BackgroundService
         }
     }
 
-    private async Task<bool> TryConvertAudio(byte[] left, byte[] right, string type, string eventCode, string path)
-    {
-        bool result = await DbToAudioConverter.FFMpegDecoder(left, right, type, path, _configuration);
-        return result || await DbToAudioConverter.FFMpegDecoder(left, right, eventCode, path, _configuration);
-    }
-
     private async Task FinalizeProcessing(TodoItem item, CancellationToken ct)
     {
         item.ProcessingMessage = item.IsCyclic && !await ReloadIsStopPressedByItemId(item.Id)
@@ -550,6 +548,8 @@ public class AiBackgroundService : BackgroundService
             todoItemFromDb.CompletedKeys = item.CompletedKeys;
             todoItemFromDb.CompletedLanguageDetect = item.CompletedLanguageDetect;
             todoItemFromDb.TotalKeys = item.TotalKeys;
+            todoItemFromDb.IsStopPressed = item.IsStopPressed;
+            todoItemFromDb.IsRunPressed = item.IsRunPressed;
             todoItemFromDb.Statistic = item.Statistic;
             todoItemFromDb.ProcessingMessage = item.ProcessingMessage;
             todoItemFromDb.LanguageCounts = item.LanguageCounts;

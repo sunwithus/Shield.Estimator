@@ -35,7 +35,7 @@
             @if (speechData != null && speechData.Count > 0 && speechData.FirstOrDefault().Id == Id)
             {
                 <MudButton OnClick="@(e => GenerateWord())" Variant="Variant.Filled" Color="@colorTag" Class="ml-3 mr-3">💾</MudButton>
-                <Diarization ColorTag="@colorTag" RecordType="@speechData?.FirstOrDefault()?.RecordType" AudioDataLeft="@speechData?.FirstOrDefault()?.AudioF" AudioDataRight="@speechData?.FirstOrDefault()?.AudioR" />
+                @*<Diarization ColorTag="@colorTag" RecordType="@speechData?.FirstOrDefault()?.RecordType" AudioDataLeft="@speechData?.FirstOrDefault()?.AudioF" AudioDataRight="@speechData?.FirstOrDefault()?.AudioR" />*@
             }
             <MudText Color="@colorTag">&emsp; @message</MudText>
         </MudText>
