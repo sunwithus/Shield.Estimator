@@ -36,6 +36,7 @@ public class TodoItemManagerService
             todoItemFromDb.IsRunPressed = item.IsRunPressed;
             todoItemFromDb.Statistic = item.Statistic;
             todoItemFromDb.ProcessingMessage = item.ProcessingMessage;
+            todoItemFromDb.LastError = item.LastError;
             todoItemFromDb.LanguageCounts = item.LanguageCounts;
             todoItemFromDb.LanguageNames = item.LanguageNames;
             await context.SaveChangesAsync();
@@ -57,6 +58,7 @@ public class TodoItemManagerService
             todoItemFromDb.IsStopPressed = true;
             todoItemFromDb.Statistic = string.Empty;
             todoItemFromDb.ProcessingMessage = message;
+            todoItemFromDb.LastError = item.LastError;
             await context.SaveChangesAsync();
         }
         await _hubContext.Clients.All.SendAsync("UpdateTodos", todoItemFromDb, ct);

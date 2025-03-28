@@ -44,6 +44,8 @@ public class AiBackgroundService : BackgroundService
     private Channel<SprSpeechTable> _whisperFasterDockerChannel;
     private Channel<SprSpeechTable> _whisperCppChannel;
 
+    private DateTime _lastCheckTime = DateTime.MinValue;
+    private bool _lastStopState;
 
     public AiBackgroundService(AudioProcessorService audioProcessor, WhisperProcessingService whisperProcessor, LanguageDetectionService languageDetection, TodoItemManagerService todoItemManager, KoboldService kobold, ILogger<AiBackgroundService> logger, IConfiguration configuration, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IOptions<WhisperCppOptions> options)
     {
@@ -255,7 +257,11 @@ public class AiBackgroundService : BackgroundService
 
         foreach (var audioRecord in audioList)
         {
-            if (await ShouldStopProcessing(item)) return;
+            if (ct.IsCancellationRequested || await ShouldStopProcessing(item))
+            {
+                CompleteChannels();
+                return;
+            }
 
             Dictionary<string, string> lang = await ProcessLanguageDetect(item, audioRecord, context, ct);
             item.CompletedLanguageDetect++;
@@ -287,12 +293,32 @@ public class AiBackgroundService : BackgroundService
             await _todoItemManager.UpdateItemStateAsync(item, ct);
         }
         // Сигнализируем о завершении
-        _whisperCppChannel.Writer.Complete();
-        _whisperFasterDockerChannel.Writer.Complete();
+        CompleteChannels();
 
 
         item.Statistic = $"{DateTime.Now}: {item.CompletedLanguageDetect}/{item.TotalKeys}";
         await _todoItemManager.UpdateItemStateAsync(item, ct);
+    }
+
+    private void CompleteChannels()
+    {
+        SafeCompleteChannel(_whisperCppChannel, nameof(_whisperCppChannel));
+        SafeCompleteChannel(_whisperFasterDockerChannel, nameof(_whisperFasterDockerChannel));
+    }
+
+    private void SafeCompleteChannel(Channel<SprSpeechTable> channel, string channelName)
+    {
+        try
+        {
+            if (!channel.Writer.TryComplete())
+            {
+                _logger.LogWarning($"Channel {channelName} was already completed");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error completing channel {channelName}");
+        }
     }
 
     private async Task<Dictionary<string, string>> ProcessLanguageDetect(TodoItem item, SprSpeechTable entity, BaseDbContext context, CancellationToken ct)
@@ -327,7 +353,7 @@ public class AiBackgroundService : BackgroundService
         {
             await foreach (var entity in channel.Reader.ReadAllAsync(ct))
             {
-                if (await ShouldStopProcessing(item)) return;
+                if (ct.IsCancellationRequested || await ShouldStopProcessing(item)) return;
 
                 await ProcessSingleAudioEntity(item, entity, ct);
             }
@@ -346,8 +372,6 @@ public class AiBackgroundService : BackgroundService
 
     private async Task ProcessSingleAudioEntity(TodoItem item, SprSpeechTable entity, CancellationToken ct)
     {
-        if (await ShouldStopProcessing(item)) return;
-
         await using var context = await CreateDbContext(item);
         var freshEntity = await ReloadEntityFromDatabase(entity.SInckey, context);
 
@@ -359,6 +383,8 @@ public class AiBackgroundService : BackgroundService
         string audioFilePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + $"{freshEntity.SInckey}.wav"); //string audioFilePath = Path.Combine(_configuration["AudioPathForBGService"], $"{entity.SInckey}.wav");
         await _audioProcessor.ConvertByteArrayToFile(audioDataLeft, audioDataRight, audioFilePath, recordType, eventCode);
         if (!File.Exists(audioFilePath)) return;
+
+        if (ct.IsCancellationRequested || await ShouldStopProcessing(item)) return;
 
         var transcribedText = await _whisperProcessor.TranscribeAudioAsync(audioFilePath, freshEntity); //внутри метода удаляем файл audioFilePath
         item.ProcessedWhisper++;
@@ -453,12 +479,22 @@ public class AiBackgroundService : BackgroundService
     }
     private async Task<bool> ShouldStopProcessing(TodoItem item)
     {
-        if(await ReloadIsStopPressedByItemId(item.Id))
+        // Добавляем кэширование состояния на 500 мс
+        if (_lastCheckTime.AddMilliseconds(500) > DateTime.Now)
+            return _lastStopState;
+
+        _lastStopState = await ReloadIsStopPressedByItemId(item.Id);
+        _lastCheckTime = DateTime.Now;
+
+        if (_lastStopState)
         {
-            await _todoItemManager.StopProcessingAsync(item, $"{DateTime.Now} Остановлено: {item.CompletedKeys}/{item.TotalKeys}", CancellationToken.None);
-            return true;
+            await _todoItemManager.StopProcessingAsync(
+                item,
+                $"{DateTime.Now:HH:mm:ss} Остановлено: {item.CompletedKeys}/{item.TotalKeys}",
+                CancellationToken.None
+            );
         }
-        return false;
+        return _lastStopState;
     }
     private async Task<bool> ReloadIsStopPressedByItemId(int Id)
     {
