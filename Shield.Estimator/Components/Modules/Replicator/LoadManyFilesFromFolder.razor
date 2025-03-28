@@ -10,7 +10,7 @@
 
 Выберите необходимые аудиофайлы:
 <br />
-<MudButton Variant="Variant.Outlined" Color="@colorButton" StartIcon="@Icons.Material.Filled.CloudUpload">
+<MudButton Variant="Variant.Outlined" Color="@colorButton" StartIcon="@Icons.Material.Filled.CloudUpload" Disabled="@isLoading">
     <InputFile OnChange="LoadFiles" multiple />
 </MudButton>
 <br />

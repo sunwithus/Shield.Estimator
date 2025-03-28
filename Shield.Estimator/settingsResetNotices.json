@@ -1,18 +1,1 @@
-[
-  {
-    "Selected ": true,
-    "DbType": "Oracle",
-    "User": "SYSDBA",
-    "Password": "masterkey",
-    "ServerAddress": "localhost",
-    "Scheme": ""
-  },
-  {
-    "Selected ": false,
-    "DbType": "Postgres",
-    "User": "postgres",
-    "Password": "masterkey",
-    "ServerAddress": "localhost",
-    "Scheme": ""
-  }
-]
+[{"Selected":true,"DbType":"Oracle","User":"SYSDBA","Password":"masterkey","ServerAddress":"192.168.2.125","Scheme":"reika"},{"Selected":false,"DbType":"Postgres","User":"postgres","Password":"masterkey","ServerAddress":"192.168.2.125","Scheme":"test"}]

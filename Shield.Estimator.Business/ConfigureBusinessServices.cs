@@ -39,7 +39,7 @@ public static class BusinessServiceExtensions
 
         services.AddHttpClient<KoboldService>(client =>
         {
-            client.Timeout = TimeSpan.FromMinutes(15);
+            client.Timeout = TimeSpan.FromMinutes(20);
         });
 
         services.AddAutoMapper(typeof(AiMapper));

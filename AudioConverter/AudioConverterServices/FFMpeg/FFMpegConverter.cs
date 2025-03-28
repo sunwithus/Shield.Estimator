@@ -67,7 +67,6 @@ public class FFMpegConverter : IAudioConverter
     public async Task<MemoryStream> ConvertByteArrayToStreamAsync(byte[] audioDataLeft, byte[] audioDataRight = null, string recordType = "", string eventCode = "")
     {
         var outputStream = new MemoryStream();
-
         await _semaphoreFfmpeg.WaitAsync();
 
         try
@@ -162,7 +161,12 @@ public class FFMpegConverter : IAudioConverter
             using var ms = new MemoryStream();
             await FFMpegArguments
                 .FromFileInput(inputFile)
-                .OutputToPipe(new StreamPipeSink(ms), o => BuildArguments(o, filter))
+                .OutputToPipe(new StreamPipeSink(ms), options => options
+                            .WithCustomArgument(filter)
+                            .WithAudioCodec("pcm_alaw")
+                            .WithAudioBitrate(128_000)
+                            .WithAudioSamplingRate(8000)
+                            .ForceFormat("wav"))
                 .ProcessAsynchronously(true, _ffOptions);
             return ms.ToArray();
         }

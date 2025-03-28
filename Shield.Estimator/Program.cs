@@ -8,6 +8,7 @@ using Shield.Estimator.Shared.Components.EntityFrameworkCore;
 using Shield.Estimator.Business;
 using Shield.AudioConverter;
 using MudBlazor.Services;
+using Shield.Estimator.Shared.Components.Modules.AiEstimateDb.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,14 @@ builder.Services.AddAudioConverterServices(builder.Configuration);
 //BackgroundService
 builder.Services.AddHostedService<AiBackgroundService>();
 builder.Services.AddHostedService<ReplBackgroundService>();
+
+//For AiBackgroundService
+
+builder.Services.AddTransient<AudioProcessorService>();
+builder.Services.AddTransient<WhisperProcessingService>();
+builder.Services.AddTransient<LanguageDetectionService>();
+builder.Services.AddSingleton<TodoItemManagerService>();
+
 
 builder.Services.AddSingleton<IDbContextFactory, DbContextFactory>();
 

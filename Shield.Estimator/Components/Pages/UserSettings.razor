@@ -21,8 +21,8 @@
     </MudText>
     <MudDivider Style="position:relative; top:4px; padding-bottom:8px;" />
 
-    <MudTextField @bind-Value="newValue" Lines="5" FullWidth Label="Шаблон запроса" Variant="Variant.Outlined" />
-    
+    <MudTextField @bind-Value="newValue" onfocus="@Focus" OnBlur="@LooseFocus" Lines="@lines" FullWidth Label="Шаблон запроса" Variant="Variant.Outlined" />
+
     <MudSimpleTable RowClass="cursor-pointer" Hover="true" Dense="true" FixedHeader="true">
         <thead>
             <tr>
@@ -31,20 +31,20 @@
             </tr>
         </thead>
 
-            <tbody>
-                @foreach (var (setting, index) in Settings.Select((setting, index) => (setting, index + 1)))
-                {
-                    <tr>
-                        <MudButton FullWidth Style="justify-content: flex-start; padding:0; border-bottom:1px solid #e0e0e0;" OnClick="@(e => EditSetting(setting.Key, setting.Value))">
-                            <td>@index</td>
-                            <td><MudText>@setting.Key</MudText></td>
-                        </MudButton>
-                        <td>
-                            <MudButton Style="padding:0;" OnClick="@(e => DeleteSetting(setting.Key))">✖️</MudButton>
-                        </td>
-                    </tr>
-                }
-            </tbody>
+        <tbody>
+            @foreach (var (setting, index) in Settings.Select((setting, index) => (setting, index + 1)))
+            {
+                <tr>
+                    <MudButton FullWidth Style="justify-content: flex-start; padding:0; border-bottom:1px solid #e0e0e0;" OnClick="@(e => EditSetting(setting.Key, setting.Value))">
+                        <td>@index</td>
+                        <td><MudText>@setting.Key</MudText></td>
+                    </MudButton>
+                    <td>
+                        <MudButton Style="padding:0;" OnClick="@(e => DeleteSetting(setting.Key))">✖️</MudButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
     </MudSimpleTable>
 
 </MudContainer>
@@ -53,6 +53,7 @@
     private Dictionary<string, string> Settings { get; set; } = new Dictionary<string, string>();
     private string newKey { get; set; } = string.Empty;
     private string newValue { get; set; } = string.Empty;
+    private int lines = 3;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,6 +61,17 @@
         Settings = await SourceName.ReadAllItemsFromFile();
         Settings = await SourceName.ReadAllItemsFromFile();
         Settings = Settings.OrderBy(x => x.Key).ToDictionary(x => x.Key, x => x.Value);
+    }
+
+    private void Focus()
+    {
+        lines = 11;
+        StateHasChanged();
+    }
+    private void LooseFocus()
+    {
+        lines = 3;
+        StateHasChanged();
     }
 
     private async Task AddOrUpdateSetting()

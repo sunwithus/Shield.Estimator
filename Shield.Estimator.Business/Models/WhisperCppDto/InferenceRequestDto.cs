@@ -24,14 +24,14 @@ public class InferenceRequestDto
     public double? EntropyThold { get; set; }
     public double? LogprobThold { get; set; }
     public bool? DebugMode { get; set; }
-    public bool? Translate { get; set; }
+    public bool? Translate { get; set; } = false;
     public bool? Diarize { get; set; } = true;
     public bool? Tinydiarize { get; set; }
     public bool? NoFallback { get; set; }
     public bool? PrintSpecial { get; set; }
-    public bool? PrintColors { get; set; }
-    public bool? PrintRealtime { get; set; }
-    public bool? PrintProgress { get; set; }
+    public bool? PrintColors { get; set; } = true;
+    public bool? PrintRealtime { get; set; } = true;
+    public bool? PrintProgress { get; set; } = true;
     public bool? NoTimestamps { get; set; }
     public string Language { get; set; } = "auto";
     public bool? DetectLanguage { get; set; }

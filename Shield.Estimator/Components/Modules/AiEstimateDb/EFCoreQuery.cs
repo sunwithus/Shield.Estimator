@@ -58,6 +58,13 @@ namespace Shield.Estimator.Shared.Components.Modules.AiEstimateDb
             return result != null ? Encoding.GetEncoding("windows-1251").GetString(result) : "Комментарий отсутствует.";
         }
 
+        public static async Task<SprSpeechTable> GetLangCodeAsync(long? key, BaseDbContext db)
+        {
+            var results = await db.SprSpeechTables.Where(x => x.SInckey == key).Select(x => x).ToListAsync();
+            var result = results.FirstOrDefault();
+            return result;
+        }
+
         public static async Task UpdateLangInfo(long? key, string detectedLanguage, string langCode, BaseDbContext db)
         {
             if (key == null)

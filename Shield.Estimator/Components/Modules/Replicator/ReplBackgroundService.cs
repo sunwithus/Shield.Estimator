@@ -14,6 +14,7 @@ using Shield.AudioConverter.AudioConverterServices;
 
 using Polly;
 using Polly.Retry;
+using Npgsql;
 
 public class ReplBackgroundService : BackgroundService
 {
@@ -33,7 +34,6 @@ public class ReplBackgroundService : BackgroundService
         //Эта политика повторяет операцию до N раз с выдержкой, 1,2,3... секунд
         _retryPolicy = Policy.Handle<Exception>().WaitAndRetryAsync(2, retryAttempt => TimeSpan.FromSeconds(retryAttempt));
         _audioConverter = audioConverter;
-
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -88,8 +88,9 @@ public class ReplBackgroundService : BackgroundService
     private async Task ProcessAudioFiles(JsonReplicatorQueue paramsRepl, CancellationToken cancellationToken)
     {
 
-        var audioFiles = Directory.EnumerateFiles(paramsRepl.FolderToSaveTempAudio);
-        
+        var audioFiles = Directory.EnumerateFiles(paramsRepl.FolderToSaveTempAudio)
+            .OrderBy(f => new FileInfo(f).Length); // Обработка мелких файлов первыми;
+
         if (!audioFiles.Any()) return;
         int processedCount = 0;
 
@@ -98,8 +99,8 @@ public class ReplBackgroundService : BackgroundService
             var success = await TryProcessAudioFile(filePath, paramsRepl, cancellationToken);
             if (success)
             {
-                Console.WriteLine($"{processedCount} / {audioFiles.Count()} => OK. File: {filePath} ");
                 processedCount++;
+                Console.WriteLine($"{processedCount} / {audioFiles.Count()} => OK. File: {filePath} ");
             }
         }
         _fileLogger.Log($"Выполнено {processedCount}/{audioFiles.Count()}. Источник: {paramsRepl.SourceName}, БД: {paramsRepl.DbType}/{paramsRepl.Scheme}.");
