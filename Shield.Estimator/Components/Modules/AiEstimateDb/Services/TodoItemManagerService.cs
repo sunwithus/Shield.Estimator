@@ -46,6 +46,7 @@ public class TodoItemManagerService
 
     public async Task StopProcessingAsync(TodoItem item, string message, CancellationToken ct)
     {
+        
         using var context = _sqliteFactory.CreateDbContext();
         var todoItemFromDb = await context.TodoItems.FindAsync(item.Id);
         if (todoItemFromDb != null)

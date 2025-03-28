@@ -47,6 +47,8 @@ public class AiBackgroundService : BackgroundService
     private DateTime _lastCheckTime = DateTime.MinValue;
     private bool _lastStopState;
 
+    //private CancellationTokenSource _combinedCts = new();
+
     public AiBackgroundService(AudioProcessorService audioProcessor, WhisperProcessingService whisperProcessor, LanguageDetectionService languageDetection, TodoItemManagerService todoItemManager, KoboldService kobold, ILogger<AiBackgroundService> logger, IConfiguration configuration, IDbContextFactory<SqliteDbContext> sqliteDbContext, IDbContextFactory dbContextFactory, IOptions<WhisperCppOptions> options)
     {
         _logger = logger;
@@ -250,6 +252,9 @@ public class AiBackgroundService : BackgroundService
 
     private async Task ProcessLanguageDetectionAsync(TodoItem item, List<SprSpeechTable> audioList, BaseDbContext context, CancellationToken ct)
     {
+        //using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _combinedCts.Token);
+        //var token = linkedCts.Token;
+
         // Словарь для подсчета количества языков по их коду
         var languageCounts = new ConcurrentDictionary<string, int>();
         // Словарь для хранения соответствия кодов и названий языков
@@ -257,6 +262,8 @@ public class AiBackgroundService : BackgroundService
 
         foreach (var audioRecord in audioList)
         {
+            //token.ThrowIfCancellationRequested();
+
             if (ct.IsCancellationRequested || await ShouldStopProcessing(item))
             {
                 CompleteChannels();
@@ -289,6 +296,12 @@ public class AiBackgroundService : BackgroundService
             else
             {
                 await _whisperFasterDockerChannel.Writer.WriteAsync(audioRecord, ct);
+            }
+
+            if (ct.IsCancellationRequested || await ShouldStopProcessing(item))
+            {
+                CompleteChannels();
+                return;
             }
             await _todoItemManager.UpdateItemStateAsync(item, ct);
         }
