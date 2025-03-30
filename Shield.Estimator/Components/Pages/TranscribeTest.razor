@@ -210,7 +210,7 @@
                         ResponseFormat = "text",
                         Language = "auto"
                     };
-                var result = await WhisperNetService.TranscribeAsync(audioFilePath);
+                var result = await WhisperNetService.TranscribeAsync(audioFilePath, "modelPath" );
 
                 transcriptionResult = result;
                 //transcriptionResult = await WhisperNetService.TranscribeAudio(audioFilePath, "uz");

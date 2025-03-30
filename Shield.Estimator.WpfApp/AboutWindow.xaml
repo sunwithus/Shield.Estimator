@@ -1,0 +1,33 @@
+﻿<Window x:Class="Shield.Estimator.Wpf.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="О программе" 
+        Height="320" 
+        Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="10">
+        <StackPanel>
+            <TextBlock Text="WhisperNet Transcription System" 
+                       FontSize="16" 
+                       FontWeight="Bold"
+                       Margin="0,0,0,10"/>
+
+            <TextBlock TextWrapping="Wrap">
+                <Run Text="Программа для автоматической транскрипции аудио с использованием моделей Whisper от OpenAI, но в облегченной реализации (формат ggml)"/>
+                <LineBreak/>
+                <LineBreak/>
+                <Run Text="Оптимизировано для CPU, есть поддержка  CUDA, VULKAN"/>
+                <LineBreak/>
+                <LineBreak/>
+                <Run Text="Memory usage => tiny	75 MiB	~273 MB; base	142 MiB	~388 MB; small	466 MiB	~852 MB; medium	1.5 GiB	~2.1 GB; large	2.9 GiB	~3.9 GB"/>
+            </TextBlock>
+
+            <Button Content="OK" 
+                    Width="80" 
+                    Margin="0,20,0,0"
+                    HorizontalAlignment="Center"
+                    Click="CloseButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

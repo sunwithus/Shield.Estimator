@@ -5,8 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Shield.Estimator.Wpf"
         mc:Ignorable="d"
-        Title="WhisperNet-GgmlModels" Height="550" Width="600" MinWidth="600" MaxWidth="750">
-    
+        Title="WhisperNet-GgmlModels" MinHeight="550" MaxHeight="550" MinWidth="550" MaxWidth="550">
+
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
@@ -14,85 +14,108 @@
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><!-- Меню -->
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><!-- Статусная строка -->
         </Grid.RowDefinitions>
 
+        <!-- Меню -->
+        <Menu Grid.Row="0">
+            <MenuItem Header="_Файл">
+                <MenuItem Header="_Выход" Click="MenuItemExit_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Справка">
+                <MenuItem Header="_О программе" Click="MenuItemAbout_Click"/>
+            </MenuItem>
+        </Menu>
+
         <!-- Input Folder -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal">
-            
+        <StackPanel Grid.Row="1" Orientation="Horizontal">
             <TextBox x:Name="InputPathTextBox" Width="400" Margin="5"
-         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
             <Button x:Name="SelectInputButton" Content="Select Input" Width="95"
-        Click="SelectFolder_Click" Margin="5"
-        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
-            
+                    Click="SelectFolder_Click" Margin="5"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
         </StackPanel>
-        
+
         <!-- Output Folder -->
-        <StackPanel Grid.Row="1"  Orientation="Horizontal">
-
+        <StackPanel Grid.Row="2" Orientation="Horizontal">
             <TextBox x:Name="OutputPathTextBox" Width="400" Margin="5"
-         IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
             <Button x:Name="SelectOutputButton" Content="Select Output" Width="95"
-        Click="SelectFolder_Click" Margin="5"
-        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+                    Click="SelectFolder_Click" Margin="5"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+        </StackPanel>
 
+        <!-- Model Selection -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal">
+            <TextBox x:Name="ModelPathTextBox" Width="400" Margin="5"
+                     IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+            <Button x:Name="SelectModelButton" Content="Select Model" Width="95"
+                    Click="SelectFolder_Click" Margin="5"
+                    IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
         </StackPanel>
 
         <!-- Controls -->
-
-        <!-- Controls -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="4">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left Controls
-            <StackPanel Grid.Column="0" Orientation="Horizontal">
-                <Button Content="Edit Prompt" Click="EditPrompt_Click"
-                IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
-                Margin="5" Padding="10,5"/>
-                <Button x:Name="ToggleFileTypeButton" Content="Switch File Type"
-                Click="ToggleFileType_Click" 
-                IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
-                Margin="5" Padding="10,5"/>
-                <TextBlock x:Name="FileTypeStatusTextBlock" VerticalAlignment="Center" Margin="5,0"/>
-            </StackPanel>
-            -->
             <!-- Right Controls -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
                 <Button Content="Start" Click="StartProcessing_Click" 
-                IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
-                Margin="5" Padding="10,5"/>
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
+                        Margin="5" Padding="10,5"/>
                 <Button Content="Stop" Click="StopProcessing_Click" 
-                IsEnabled="{Binding IsProcessing}"
-                Margin="5" Padding="10,5"/>
+                        IsEnabled="{Binding IsProcessing}"
+                        Margin="5" Padding="10,5"/>
             </StackPanel>
         </Grid>
 
         <!-- Console -->
-        <TextBox Grid.Row="4" Margin="3" IsReadOnly="True" 
+        <TextBox Grid.Row="5" Margin="3" IsReadOnly="True" 
                  x:Name="ConsoleTextBox"
                  Text="{Binding ConsoleMessage, UpdateSourceTrigger=PropertyChanged}" 
                  VerticalScrollBarVisibility="Auto"
                  TextWrapping="Wrap"
-                 AcceptsReturn="True"/>
+                 AcceptsReturn="True"
+                 Height="250"/>
 
         <!-- Information -->
-        <TextBlock Grid.Row="5" Text="Для редактирования настроек откройте файл appsettings.json в директории с программой"
+        <TextBlock Grid.Row="6" FontSize="12" TextWrapping="Wrap" Text="Для изменения настроек (включать/выключить временные метки и др.) отредактируйте файл appsettings.json в директории с программой"
                    HorizontalAlignment="Left" Margin="5"/>
-        <!-- Status 
-        <TextBlock Grid.Row="6" Text="{Binding StatusMessage}"
-                   HorizontalAlignment="Center" Margin="5"/>
-        -->
+
+        <!-- Статус загрузки -->
+        <TextBlock Grid.Row="7" x:Name="LoadingStatusTextBlock" 
+               HorizontalAlignment="Center" 
+               Margin="5" 
+               FontWeight="Bold"/>
+
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Center">
+            <TextBlock Text="CPU: " Margin="5"/>
+            <ProgressBar Width="100" Height="20" 
+                    Minimum="0" Maximum="100" 
+                    Value="{Binding CpuUsage}"/>
+            <TextBlock Text="{Binding CpuUsage, StringFormat={}{0:0}%}" Margin="5"/>
+
+            <TextBlock Text="RAM: " Margin="5"/>
+            <ProgressBar Width="100" Height="20" 
+                    Minimum="0" Maximum="100" 
+                    Value="{Binding RamUsage}"/>
+            <TextBlock Text="{Binding RamUsage, StringFormat={}{0:0}%}" Margin="5"/>
+
+        </StackPanel>
+
+
     </Grid>
-
-
+    
+    
 </Window>

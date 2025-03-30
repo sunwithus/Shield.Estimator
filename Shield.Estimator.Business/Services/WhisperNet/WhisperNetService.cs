@@ -38,29 +38,55 @@ public class WhisperNetService : IDisposable
     }
 
 
-    public async Task<string> TranscribeAsync(string audioFilePath, bool withTimestamps = false, string language = "auto")
+    public async Task<string> TranscribeAsync(string audioFilePath, string selectedModel, IProgress<string> progress = null, CancellationToken ct = default)
     {
         using var _ = _logger.BeginScope("Transcription for {File}", Path.GetFileName(audioFilePath));
         var sw = Stopwatch.StartNew();
         try
         {
             string text = string.Empty;
-            var targetModelPath = SelectModelPath(language);
-            await EnsureModelLoaded(targetModelPath);
+
+            if (_loadedModelPath != selectedModel)
+            {
+                progress?.Report("Загрузка модели...");
+                Trace.TraceInformation("Загрузка модели...");
+            }
+            else
+            {
+                progress?.Report("Модель уже загружена.");
+                Trace.TraceInformation("Модель уже загружена.");
+            }
+
+            //selectedModel ??= SelectModelPath(language);
+            
+            await EnsureModelLoaded(selectedModel);
+            if (_loadedModelPath == selectedModel)
+            {
+                progress?.Report("Начало транскрибирования...");
+                Trace.TraceInformation("Начало транскрибирования...");
+            }
+            else
+            {
+                progress?.Report("Модель загружена. Начало транскрибирования...");
+            }
 
             using (var waveData = await ConvertAudioFile(audioFilePath))
             {
-                using (var processor = CreateProcessor(language)) 
+                using (var processor = CreateProcessor())
                 {
-                    text = await ProcessAudioTranscription(waveData, processor, sw, withTimestamps);
-                    return text;
+                    text = await ProcessAudioTranscription(waveData, processor, sw, _options.Value.PrintTimestamps);
+                    progress?.Report("Транскрибирование завершено.");
                 }
+    
             }
+            return text;
         }
         
         catch (Exception ex)
         {
             _logger.LogError(ex, "Audio transcription failed");
+            progress?.Report("Audio transcription failed" + ex.Message);
+            Trace.TraceError($"Ошибка: {ex.Message}");
             throw;
         }
     }
@@ -79,6 +105,7 @@ public class WhisperNetService : IDisposable
             : throw new FileNotFoundException("Default Whisper model not found", defaultPath);
     }
 
+
     private async Task EnsureModelLoaded(string modelPath)
     {
         if (_whisperFactory != null && _loadedModelPath == modelPath && !File.Exists(modelPath)) return;
@@ -91,13 +118,38 @@ public class WhisperNetService : IDisposable
         _loadedModelPath = modelPath;
     }
 
-    private WhisperProcessor CreateProcessor(string language)
+    private WhisperProcessor CreateProcessor()
     {
-        var langCode = (language.Length == 2 || language == "yue" || language == "haw") ? language : "auto";
-        return _whisperFactory!.CreateBuilder()
-            .WithLanguage(langCode)
-            .WithPrintTimestamps(true)
-            .Build();
+        var options = _options.Value;
+        var builder = _whisperFactory!.CreateBuilder()
+            
+            .WithMaxLastTextTokens(options.MaxLastTextTokens)
+            .WithOffset(options.Offset)
+            .WithDuration(options.Duration)
+            .WithLanguage(options.Language)
+            
+            .WithPrintTimestamps(options.PrintTimestamps)
+            .WithTokenTimestampsThreshold(options.TokenTimestampsThreshold)
+            .WithTokenTimestampsSumThreshold(options.TokenTimestampsSumThreshold)
+            .WithMaxSegmentLength(options.MaxSegmentLength)
+            .WithMaxTokensPerSegment(options.MaxTokensPerSegment)
+            .WithTemperature(options.Temperature)
+            .WithMaxInitialTs(options.MaxInitialTs)
+            .WithLengthPenalty(options.LengthPenalty)
+            .WithTemperatureInc(options.TemperatureInc)
+            .WithEntropyThreshold(options.EntropyThreshold)
+            .WithLogProbThreshold(options.LogProbThreshold)
+            .WithNoSpeechThreshold(options.NoSpeechThreshold);
+
+        if (options.Threads > 0) builder.WithThreads(options.Threads);
+        if (options.UseTokenTimestamps) builder.WithTokenTimestamps();
+        if (options.ComputeProbabilities) builder.WithProbabilities();
+        if (options.Translate) builder.WithTranslate();
+        if (options.NoContext) builder.WithNoContext();
+        if (options.SingleSegment) builder.WithSingleSegment();
+        if (options.SplitOnWord) builder.SplitOnWord();
+
+        return builder.Build();
     }
 
     private async Task<WaveData> ConvertAudioFile(string audioFilePath)
@@ -228,31 +280,3 @@ public class WhisperNetService : IDisposable
     */
 
 }
-
-public class WhisperProcessorBuilder
-{
-    private readonly WhisperFactory _factory;
-    private readonly string _language;
-
-    public WhisperProcessorBuilder(WhisperFactory factory, string language = "auto")
-    {
-        _factory = factory;
-        _language = language;
-    }
-
-    public WhisperProcessor Build() => _factory
-        .CreateBuilder()
-        .WithLanguage(_language)
-        .WithLanguageDetection()
-        .WithPrintTimestamps()
-                    .WithSegmentEventHandler((segment) =>
-                    {
-                        // Do whetever you want with your segment here.
-                        Console.WriteLine($"{segment.Start}->{segment.End}: {segment.Text}");
-                    })
-
-
-        //.WithLanguageDetection()
-        .Build();
-}
-

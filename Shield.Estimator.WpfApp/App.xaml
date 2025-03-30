@@ -5,6 +5,13 @@
              
              Startup="Application_Startup">
     <Application.Resources>
-         
+        <Style TargetType="MenuItem">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="8,4"/>
+        </Style>
+
+        <Style TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
     </Application.Resources>
 </Application>

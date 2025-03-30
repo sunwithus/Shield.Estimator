@@ -11,6 +11,7 @@ using Shield.Estimator.Business.Options.WhisperOptions;
 using Shield.Estimator.Business.Services.WhisperNet;
 using System.IO;
 using System.Windows;
+using System.Diagnostics;
 
 
 namespace Shield.Estimator.Wpf;
@@ -18,6 +19,15 @@ namespace Shield.Estimator.Wpf;
 public partial class App : Application
 {
     private IHost _host;
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        // Настройка вывода в файл
+        Trace.Listeners.Add(new TextWriterTraceListener("log.txt"));
+        Trace.AutoFlush = true;
+
+        base.OnStartup(e);
+    }
 
     private void Application_Startup(object sender, StartupEventArgs e)
     {
@@ -45,6 +55,8 @@ public partial class App : Application
                     services.AddSingleton<ProcessStateWpf>();
                     services.AddSingleton<WhisperNetService>();
                     services.AddSingleton<FileProcessor>();
+
+                    services.AddSingleton<IConfiguration>(context.Configuration);
 
 
                     // Main Window
