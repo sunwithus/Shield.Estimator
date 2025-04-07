@@ -84,13 +84,13 @@
         <TextBox Grid.Row="5" Margin="3" IsReadOnly="True" 
                  x:Name="ConsoleTextBox"
                  Text="{Binding ConsoleMessage, UpdateSourceTrigger=PropertyChanged}" 
-                 VerticalScrollBarVisibility="Auto"
+                 VerticalScrollBarVisibility="Visible"
                  TextWrapping="Wrap"
                  AcceptsReturn="True"
                  Height="250"/>
 
         <!-- Information -->
-        <TextBlock Grid.Row="6" FontSize="12" TextWrapping="Wrap" Text="Для изменения настроек (включать/выключить временные метки и др.) отредактируйте файл appsettings.json в директории с программой"
+        <TextBlock Grid.Row="6" FontSize="12" TextWrapping="Wrap" Text="Для изменения настроек (временные метки, количество потоков и др.) отредактируйте файл appsettings.json в директории с программой"
                    HorizontalAlignment="Left" Margin="5"/>
 
         <!-- Статус загрузки -->

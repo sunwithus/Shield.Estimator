@@ -2,7 +2,8 @@
 
 public class WhisperNetOptions
 {
-    public int Threads { get; set; } = 0; //Environment.ProcessorCount;
+    public int MaxConcurrentTasks { get; set; } = 4;
+    public int Threads { get; set; } = 4; //Environment.ProcessorCount;
     public int MaxLastTextTokens { get; set; } = 16384;
     public TimeSpan Offset { get; set; } = TimeSpan.Zero;
     public TimeSpan Duration { get; set; } = TimeSpan.Zero;
@@ -30,9 +31,10 @@ public class WhisperNetOptions
     public float LogProbThreshold { get; set; } = -1.0f;
     public float NoSpeechThreshold { get; set; } = 0.6f;
     public bool ComputeProbabilities { get; set; } = false;
-
+    /*
     public string DefaultModelPath { get; set; } = "Models/ggml-base.bin";
     public Dictionary<string, string> CustomModels { get; set; } = new();
+    */
 }
 
 

@@ -11,10 +11,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shield.Estimator.WhisperWpf
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioConverter", "AudioConverter\AudioConverter.csproj", "{E63AD5EE-8527-4570-AF56-D37F0F10807B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "speech2text", "..\..\whisper-api\speech2text.csproj", "{622E30C7-6F12-4C0F-B1FC-B887B1E4E484}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioConverter.Tests", "AudioConverter.Tests\AudioConverter.Tests.csproj", "{F390E064-A8C2-4E80-BB32-532E7515DAEC}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,14 +33,6 @@ Global
 		{E63AD5EE-8527-4570-AF56-D37F0F10807B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E63AD5EE-8527-4570-AF56-D37F0F10807B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E63AD5EE-8527-4570-AF56-D37F0F10807B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{622E30C7-6F12-4C0F-B1FC-B887B1E4E484}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{622E30C7-6F12-4C0F-B1FC-B887B1E4E484}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{622E30C7-6F12-4C0F-B1FC-B887B1E4E484}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{622E30C7-6F12-4C0F-B1FC-B887B1E4E484}.Release|Any CPU.Build.0 = Release|Any CPU
-		{F390E064-A8C2-4E80-BB32-532E7515DAEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{F390E064-A8C2-4E80-BB32-532E7515DAEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{F390E064-A8C2-4E80-BB32-532E7515DAEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{F390E064-A8C2-4E80-BB32-532E7515DAEC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

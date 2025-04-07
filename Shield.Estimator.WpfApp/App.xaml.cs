@@ -51,6 +51,7 @@ public partial class App : Application
                     services.AddSingleton<NAudioConverter>();
                     services.AddSingleton<FFMpegConverter>();
                     services.AddSingleton<AudioConverterFactory>();
+                    
                     // Services
                     services.AddSingleton<ProcessStateWpf>();
                     services.AddSingleton<WhisperNetService>();
